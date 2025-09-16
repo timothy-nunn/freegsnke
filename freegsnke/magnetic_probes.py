@@ -519,7 +519,7 @@ class Probes:
         if probe == "pickups":
             pos_R = self.pickup_pos[:, 0]
 
-        btor = eq._profiles.fvac() / pos_R
+        btor = eq._profiles.fvac / pos_R
         return btor
 
     # def calculate_pickup_value_v1(self,eq,probe = 'pickups'):
