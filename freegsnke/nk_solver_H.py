@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import numba as nb
 import numpy as np
 
 
@@ -176,6 +177,42 @@ class nksolver:
         self.l2_reg = l2_reg
         self.collinearity_reg = collinearity_reg
 
+    @staticmethod
+    @nb.njit(cache=True, fastmath=True)
+    def _Arnoldi_iteration_explained_residual(
+        G, collinearity, R0, nR0, n_it, l2_reg, collinearity_reg, clip
+    ):
+        # numba does not support np.max(..., axis=n)
+        # hence calculating the max in a loop
+        collinearity_penalty_factors = (
+            1 / (1 - np.abs(collinearity[: n_it + 1, : n_it + 1])) ** 2
+        )
+        max_collinearity_penalty_factors = np.empty(
+            collinearity_penalty_factors.shape[1]
+        )
+        for i in range(collinearity_penalty_factors.shape[1]):
+            max_collinearity_penalty_factors[i] = np.max(
+                collinearity_penalty_factors[:, i]
+            )
+
+        # prepare to calculate explained residual
+        collinearity_penalty = np.diag(max_collinearity_penalty_factors - 1)
+
+        collinear_aware_regulariz = (
+            np.eye(n_it + 1) * l2_reg + collinearity_penalty * collinearity_reg
+        ) * nR0**2
+
+        # solve the regularised least sq problem
+        coeffs = np.dot(
+            np.linalg.inv(
+                G[:, : n_it + 1].T @ G[:, : n_it + 1] + collinear_aware_regulariz
+            ),
+            np.dot(G[:, : n_it + 1].T, -R0),
+        )
+        coeffs = np.clip(coeffs, -clip, clip)
+        # calculare the corresponding fraction of residual that is currently explained
+        return np.sum(G[:, : n_it + 1] * coeffs[np.newaxis, :], axis=1), coeffs
+
     def Arnoldi_iteration(
         self,
         x0,
@@ -276,35 +313,17 @@ class nksolver:
             # build Arnoldi update
             dx = self.Arnoldi_unit(x0, dx, R0, F_function, args)
 
-            # prepare to calculate explained residual
-            collinearity_penalty = np.diag(
-                np.max(
-                    1
-                    / (1 - np.abs(self.collinearity[: self.n_it + 1, : self.n_it + 1]))
-                    ** 2,
-                    axis=0,
-                )
-                - 1
+            expl_res, coeffs = self._Arnoldi_iteration_explained_residual(
+                self.G,
+                self.collinearity,
+                R0,
+                nR0,
+                self.n_it,
+                self.l2_reg,
+                self.collinearity_reg,
+                clip,
             )
-            collinear_aware_regulariz = (
-                np.eye(self.n_it + 1) * self.l2_reg
-                + collinearity_penalty * self.collinearity_reg
-            )
-            self.collinear_aware_regulariz = collinear_aware_regulariz * nR0**2
 
-            # solve the regularised least sq problem
-            coeffs = np.dot(
-                np.linalg.inv(
-                    self.G[:, : self.n_it + 1].T @ self.G[:, : self.n_it + 1]
-                    + self.collinear_aware_regulariz
-                ),
-                np.dot(self.G[:, : self.n_it + 1].T, -R0),
-            )
-            coeffs = np.clip(coeffs, -clip, clip)
-            # calculare the corresponding fraction of residual that is currently explained
-            expl_res = np.sum(
-                self.G[:, : self.n_it + 1] * coeffs[np.newaxis, :], axis=1
-            )
             self.relative_unexplained_residuals.append(
                 np.linalg.norm(R0 + expl_res) / nR0
             )
