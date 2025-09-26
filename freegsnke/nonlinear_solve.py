@@ -1511,106 +1511,13 @@ class nl_solver:
 
                 data = []
                 for j in self.arange_currents:
-
-                    this_target_dIy = 1.0 * self.approved_target_dIy[j]
-                    dIydIj, ndIy = self.prepare_build_dIydI_j(
-                        j,
-                        target_relative_tolerance_linearization,
-                        this_target_dIy,
-                        self.starting_dI[j],
-                        GS=True,
-                    )
-                    core_check = (
-                        np.sum(
-                            np.abs(
-                                self.profiles1.diverted_core_mask.astype(float)
-                                - self.profiles2.diverted_core_mask.astype(float)
-                            )
-                        )
-                        == 0
-                    )
-                    if force_core_mask_linearization:
-                        while core_check == False:
-                            self.starting_dI[j] /= 1.5
-                            this_target_dIy /= 1.5
-                            dIydIj, ndIy = self.prepare_build_dIydI_j(
-                                j,
-                                target_relative_tolerance_linearization,
-                                this_target_dIy,
-                                self.starting_dI[j],
-                            )
-                            core_check = (
-                                np.sum(
-                                    np.abs(
-                                        self.profiles1.diverted_core_mask.astype(float)
-                                        - self.profiles2.diverted_core_mask.astype(
-                                            float
-                                        )
-                                    )
-                                )
-                                == 0
-                            )
-
-                    if (
-                        np.abs(np.log10(self.final_dI_record[j] / self.starting_dI[j]))
-                        > 0.5
-                    ):
-                        dIydIj, rel_ndIy = self.build_dIydI_j(
+                    data.append(
+                        _calculate_dIydI_data_j(
+                            self,
                             j,
                             target_relative_tolerance_linearization,
-                        )
-                        core_check = (
-                            np.sum(
-                                np.abs(
-                                    self.profiles1.diverted_core_mask.astype(float)
-                                    - self.profiles2.diverted_core_mask.astype(float)
-                                )
-                            )
-                            == 0
-                        )
-                        if force_core_mask_linearization:
-                            while core_check == False:
-                                self.final_dI_record[j] /= 1.2
-                                dIydIj, rel_ndIy = self.build_dIydI_j(
-                                    j,
-                                    target_relative_tolerance_linearization,
-                                )
-                                core_check = (
-                                    np.sum(
-                                        np.abs(
-                                            self.profiles1.diverted_core_mask.astype(
-                                                float
-                                            )
-                                            - self.profiles2.diverted_core_mask.astype(
-                                                float
-                                            )
-                                        )
-                                    )
-                                    == 0
-                                )
-                    else:
-                        self.final_dI_record[j] = 1.0 * self.starting_dI[j]
-
-                    if verbose:
-                        print("")
-                        print(f"Mode: {j}")
-                        print(f"  Initial delta_current = {self.starting_dI[j]}")
-                        print(f"  Initial relative Iy change = {ndIy}")
-                        print(f"  Final delta_current = {self.final_dI_record[j]}")
-                        print("")
-                        print(f"  Final relative Iy change = {rel_ndIy}")
-                        print(
-                            f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
-                        )
-
-                    R0 = self.eq2.Rcurrent()
-                    Z0 = self.eq2.Zcurrent()
-                    data.append(
-                        (
-                            np.copy(dIydIj),
-                            np.copy(self.eq2.psi()),
-                            (R0 - self.R0) / self.final_dI_record[j],
-                            (Z0 - self.Z0) / self.final_dI_record[j],
+                            force_core_mask_linearization,
+                            verbose,
                         )
                     )
 
@@ -3210,3 +3117,103 @@ class nl_solver:
             M[j] = np.sum(greenm, axis=-1)  # sum over filaments
 
         return -2 * np.pi * M
+
+
+def _calculate_dIydI_data_j(
+    solver,
+    j,
+    target_relative_tolerance_linearization,
+    force_core_mask_linearization,
+    verbose,
+):
+    this_target_dIy = 1.0 * solver.approved_target_dIy[j]
+    dIydIj, ndIy = solver.prepare_build_dIydI_j(
+        j,
+        target_relative_tolerance_linearization,
+        this_target_dIy,
+        solver.starting_dI[j],
+        GS=True,
+    )
+    core_check = (
+        np.sum(
+            np.abs(
+                solver.profiles1.diverted_core_mask.astype(float)
+                - solver.profiles2.diverted_core_mask.astype(float)
+            )
+        )
+        == 0
+    )
+    if force_core_mask_linearization:
+        while core_check is False:
+            solver.starting_dI[j] /= 1.5
+            this_target_dIy /= 1.5
+            dIydIj, ndIy = solver.prepare_build_dIydI_j(
+                j,
+                target_relative_tolerance_linearization,
+                this_target_dIy,
+                solver.starting_dI[j],
+            )
+            core_check = (
+                np.sum(
+                    np.abs(
+                        solver.profiles1.diverted_core_mask.astype(float)
+                        - solver.profiles2.diverted_core_mask.astype(float)
+                    )
+                )
+                == 0
+            )
+
+    if np.abs(np.log10(solver.final_dI_record[j] / solver.starting_dI[j])) > 0.5:
+        dIydIj, rel_ndIy = solver.build_dIydI_j(
+            j,
+            target_relative_tolerance_linearization,
+        )
+        core_check = (
+            np.sum(
+                np.abs(
+                    solver.profiles1.diverted_core_mask.astype(float)
+                    - solver.profiles2.diverted_core_mask.astype(float)
+                )
+            )
+            == 0
+        )
+        if force_core_mask_linearization:
+            while core_check is False:
+                solver.final_dI_record[j] /= 1.2
+                dIydIj, rel_ndIy = solver.build_dIydI_j(
+                    j,
+                    target_relative_tolerance_linearization,
+                )
+                core_check = (
+                    np.sum(
+                        np.abs(
+                            solver.profiles1.diverted_core_mask.astype(float)
+                            - solver.profiles2.diverted_core_mask.astype(float)
+                        )
+                    )
+                    == 0
+                )
+    else:
+        solver.final_dI_record[j] = 1.0 * solver.starting_dI[j]
+
+    if verbose:
+        print("")
+        print(f"Mode: {j}")
+        print(f"  Initial delta_current = {solver.starting_dI[j]}")
+        print(f"  Initial relative Iy change = {ndIy}")
+        print(f"  Final delta_current = {solver.final_dI_record[j]}")
+        print("")
+        print(f"  Final relative Iy change = {rel_ndIy}")
+        print(
+            f"  Initial vs. Final GS residual: {solver.NK.initial_rel_residual} vs. {solver.NK.relative_change}"
+        )
+
+    R0 = solver.eq2.Rcurrent()
+    Z0 = solver.eq2.Zcurrent()
+
+    return (
+        np.copy(dIydIj),
+        np.copy(solver.eq2.psi()),
+        (R0 - solver.R0) / solver.final_dI_record[j],
+        (Z0 - solver.Z0) / solver.final_dI_record[j],
+    )
