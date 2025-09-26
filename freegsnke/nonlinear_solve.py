@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
 """
 
+import copy
 import warnings
 from copy import deepcopy
 
@@ -1513,7 +1514,7 @@ class nl_solver:
                 for j in self.arange_currents:
                     data.append(
                         _calculate_dIydI_data_j(
-                            self,
+                            copy.deepcopy(self),
                             j,
                             target_relative_tolerance_linearization,
                             force_core_mask_linearization,
