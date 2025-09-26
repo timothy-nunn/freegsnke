@@ -22,11 +22,13 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 import copy
 from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
+from math import ceil
 
 import matplotlib.pyplot as plt
 import numpy as np
 from freegs4e import bilinear_interpolation
 from freegs4e.gradshafranov import GreensBr, GreensdBrdz
+from more_itertools import batched
 from scipy.signal import convolve2d
 
 from . import nk_solver_H as nk_solver
@@ -1508,32 +1510,40 @@ class nl_solver:
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
+                # how many dIydI to calculate per batch
+                chunk_size = 24
+                num_batches = ceil(self.arange_currents.shape[0] / chunk_size)
+
+                # one nl_solve object per batch
                 dIydI_auxiliary_solvers = [
-                    copy.deepcopy(self) for _ in self.arange_currents
+                    copy.deepcopy(self) for _ in range(num_batches)
                 ]
 
+                # these things cannot be pickled, so cannot be copied onto the new processor
+                # they will be reset in the calling function!
                 for s in dIydI_auxiliary_solvers:
                     s.eq1._solver = None
                     s.eq2._solver = None
                     s.NK.linear_GS_solver = None
 
-                with ProcessPoolExecutor(max_workers=None) as executor:
-                    for j, d in executor.map(
-                        _calculate_dIydI_data_j,
+                with ProcessPoolExecutor(max_workers=num_batches) as executor:
+                    for return_data in executor.map(
+                        _call_calculate_dIydI_data_j,
                         dIydI_auxiliary_solvers,
-                        self.arange_currents,
+                        batched(self.arange_currents, chunk_size),
                         [
                             target_relative_tolerance_linearization
-                            for _ in self.arange_currents
+                            for _ in range(num_batches)
                         ],
-                        [force_core_mask_linearization for _ in self.arange_currents],
-                        [verbose for _ in self.arange_currents],
-                        chunksize=2,
+                        [force_core_mask_linearization for _ in range(num_batches)],
+                        [verbose for _ in range(num_batches)],
+                        chunksize=1,
                     ):
-                        self.dIydI[:, j] = d[0]
-                        self.psideltaI[j] = d[1]
-                        self.dRZdI[0, j] = d[2]
-                        self.dRZdI[1, j] = d[3]
+                        for j, d in return_data:
+                            self.dIydI[:, j] = d[0]
+                            self.psideltaI[j] = d[1]
+                            self.dRZdI[0, j] = d[2]
+                            self.dRZdI[1, j] = d[3]
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
@@ -3131,6 +3141,36 @@ class nl_solver:
         return -2 * np.pi * M
 
 
+def _call_calculate_dIydI_data_j(
+    solver: nl_solver,
+    js,
+    target_relative_tolerance_linearization,
+    force_core_mask_linearization,
+    verbose,
+):
+    # reset the stuff that couldnt be pickled
+    solver.eq1.createVcycle()
+    solver.eq2.createVcycle()
+    solver.NK.createVcycle()
+
+    data = []
+    for j in js:
+        data.append(
+            (
+                j,
+                _calculate_dIydI_data_j(
+                    solver,
+                    j,
+                    target_relative_tolerance_linearization,
+                    force_core_mask_linearization,
+                    verbose,
+                ),
+            )
+        )
+
+    return data
+
+
 def _calculate_dIydI_data_j(
     solver: nl_solver,
     j,
@@ -3138,10 +3178,6 @@ def _calculate_dIydI_data_j(
     force_core_mask_linearization,
     verbose,
 ):
-    solver.eq1.createVcycle()
-    solver.eq2.createVcycle()
-    solver.NK.createVcycle()
-
     this_target_dIy = 1.0 * solver.approved_target_dIy[j]
     dIydIj, ndIy = solver.prepare_build_dIydI_j(
         j,
@@ -3227,7 +3263,7 @@ def _calculate_dIydI_data_j(
     R0 = solver.eq2.Rcurrent()
     Z0 = solver.eq2.Zcurrent()
 
-    return j, (
+    return (
         np.copy(dIydIj),
         np.copy(solver.eq2.psi()),
         (R0 - solver.R0) / solver.final_dI_record[j],
