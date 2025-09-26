@@ -20,7 +20,7 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import copy
-import warnings
+from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
@@ -495,9 +495,7 @@ class nl_solver:
         self.step_no = 0
 
         # set default blend for contracting the plasma lumped eq
-        self.make_blended_hatIy = lambda x: self.make_blended_hatIy_(
-            x, blend=blend_hatJ
-        )
+        self._blend_hatJ = blend_hatJ
 
         # self.dIydI is the Jacobian of the plasma current distribution
         # with respect to the independent currents (as in self.currents_vec)
@@ -1510,29 +1508,32 @@ class nl_solver:
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
-                def _call_calculate_dIydI_data_j(solver, j):
-                    return j, _calculate_dIydI_data_j(
-                        solver,
-                        j,
-                        target_relative_tolerance_linearization,
-                        force_core_mask_linearization,
-                        verbose,
-                    )
-
                 dIydI_auxiliary_solvers = [
                     copy.deepcopy(self) for _ in self.arange_currents
                 ]
-                data = map(
-                    _call_calculate_dIydI_data_j,
-                    dIydI_auxiliary_solvers,
-                    self.arange_currents,
-                )
 
-                for j, d in data:
-                    self.dIydI[:, j] = d[0]
-                    self.psideltaI[j] = d[1]
-                    self.dRZdI[0, j] = d[2]
-                    self.dRZdI[1, j] = d[3]
+                for s in dIydI_auxiliary_solvers:
+                    s.eq1._solver = None
+                    s.eq2._solver = None
+                    s.NK.linear_GS_solver = None
+
+                with ProcessPoolExecutor(max_workers=None) as executor:
+                    for j, d in executor.map(
+                        _calculate_dIydI_data_j,
+                        dIydI_auxiliary_solvers,
+                        self.arange_currents,
+                        [
+                            target_relative_tolerance_linearization
+                            for _ in self.arange_currents
+                        ],
+                        [force_core_mask_linearization for _ in self.arange_currents],
+                        [verbose for _ in self.arange_currents],
+                        chunksize=2,
+                    ):
+                        self.dIydI[:, j] = d[0]
+                        self.psideltaI[j] = d[1]
+                        self.dRZdI[0, j] = d[2]
+                        self.dRZdI[1, j] = d[3]
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
@@ -2129,6 +2130,10 @@ class nl_solver:
             target_relative_tolerance=rtol_NK,
             suppress=True,
         )
+
+    def make_blended_hatIy(self, hatIy1):
+        """Calls `make_blended_hatIy_` with the default blend_hatJ (set in the initialisation of the object)"""
+        return self.make_blended_hatIy_(hatIy1, self._blend_hatJ)
 
     def make_blended_hatIy_(self, hatIy1, blend):
         """
@@ -3127,12 +3132,16 @@ class nl_solver:
 
 
 def _calculate_dIydI_data_j(
-    solver,
+    solver: nl_solver,
     j,
     target_relative_tolerance_linearization,
     force_core_mask_linearization,
     verbose,
 ):
+    solver.eq1.createVcycle()
+    solver.eq2.createVcycle()
+    solver.NK.createVcycle()
+
     this_target_dIy = 1.0 * solver.approved_target_dIy[j]
     dIydIj, ndIy = solver.prepare_build_dIydI_j(
         j,
@@ -3218,7 +3227,7 @@ def _calculate_dIydI_data_j(
     R0 = solver.eq2.Rcurrent()
     Z0 = solver.eq2.Zcurrent()
 
-    return (
+    return j, (
         np.copy(dIydIj),
         np.copy(solver.eq2.psi()),
         (R0 - solver.R0) / solver.final_dI_record[j],

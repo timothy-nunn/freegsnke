@@ -96,18 +96,7 @@ class NKGSsolver:
             collinearity_reg=collinearity_reg,
         )
 
-        # linear solver for del*Psi=RHS with fixed RHS
-        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
-            nx,
-            ny,
-            freegs4e.gradshafranov.GSsparse4thOrder(
-                eq.R[0, 0], eq.R[-1, 0], eq.Z[0, 0], eq.Z[0, -1]
-            ),
-            nlevels=1,
-            ncycle=1,
-            niter=2,
-            direct=True,
-        )
+        self.createVcycle()
 
         # List of indices on the boundary
         bndry_indices = np.concatenate(
@@ -136,6 +125,20 @@ class NKGSsolver:
 
         # RHS/Jtor
         self.rhs_before_jtor = -freegs4e.gradshafranov.mu0 * eq.R
+
+    def createVcycle(self):
+        """Creates linear solver for del*Psi=RHS with fixed RHS"""
+        self.linear_GS_solver = freegs4e.multigrid.createVcycle(
+            self.nx,
+            self.ny,
+            freegs4e.gradshafranov.GSsparse4thOrder(
+                self.R[0, 0], self.R[-1, 0], self.Z[0, 0], self.Z[0, -1]
+            ),
+            nlevels=1,
+            ncycle=1,
+            niter=2,
+            direct=True,
+        )
 
     def freeboundary(self, plasma_psi, tokamak_psi, profiles):
         """Imposes boundary conditions on set of boundary points.
