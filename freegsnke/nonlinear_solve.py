@@ -1510,19 +1510,20 @@ class nl_solver:
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
-                data = []
-                for j in self.arange_currents:
-                    data.append(
-                        _calculate_dIydI_data_j(
-                            copy.deepcopy(self),
-                            j,
-                            target_relative_tolerance_linearization,
-                            force_core_mask_linearization,
-                            verbose,
-                        )
+                def _call_calculate_dIydI_data_j(solver, j):
+                    return j, _calculate_dIydI_data_j(
+                        solver,
+                        j,
+                        target_relative_tolerance_linearization,
+                        force_core_mask_linearization,
+                        verbose,
                     )
 
-                for j, d in zip(self.arange_currents, data):
+                data = []
+                for j in self.arange_currents:
+                    data.append(_call_calculate_dIydI_data_j(copy.deepcopy(self), j))
+
+                for j, d in data:
                     self.dIydI[:, j] = d[0]
                     self.psideltaI[j] = d[1]
                     self.dRZdI[0, j] = d[2]
