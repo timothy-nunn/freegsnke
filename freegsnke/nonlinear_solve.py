@@ -1509,6 +1509,7 @@ class nl_solver:
                 self.ddIyddI = np.zeros(self.n_metal_modes + 1)
                 self.final_dI_record = np.zeros(self.n_metal_modes + 1)
 
+                data = []
                 for j in self.arange_currents:
 
                     this_target_dIy = 1.0 * self.approved_target_dIy[j]
@@ -1602,12 +1603,22 @@ class nl_solver:
                             f"  Initial vs. Final GS residual: {self.NK.initial_rel_residual} vs. {self.NK.relative_change}"
                         )
 
-                    self.dIydI[:, j] = np.copy(dIydIj)
-                    self.psideltaI[j] = np.copy(self.eq2.psi())
                     R0 = self.eq2.Rcurrent()
                     Z0 = self.eq2.Zcurrent()
-                    self.dRZdI[0, j] = (R0 - self.R0) / self.final_dI_record[j]
-                    self.dRZdI[1, j] = (Z0 - self.Z0) / self.final_dI_record[j]
+                    data.append(
+                        (
+                            np.copy(dIydIj),
+                            np.copy(self.eq2.psi()),
+                            (R0 - self.R0) / self.final_dI_record[j],
+                            (Z0 - self.Z0) / self.final_dI_record[j],
+                        )
+                    )
+
+                for j, d in zip(self.arange_currents, data):
+                    self.dIydI[:, j] = d[0]
+                    self.psideltaI[j] = d[1]
+                    self.dRZdI[0, j] = d[2]
+                    self.dRZdI[1, j] = d[3]
 
                 self.dIydI_ICs = np.copy(self.dIydI)
             else:
