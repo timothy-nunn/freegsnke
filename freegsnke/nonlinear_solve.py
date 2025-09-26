@@ -1519,9 +1519,14 @@ class nl_solver:
                         verbose,
                     )
 
-                data = []
-                for j in self.arange_currents:
-                    data.append(_call_calculate_dIydI_data_j(copy.deepcopy(self), j))
+                dIydI_auxiliary_solvers = [
+                    copy.deepcopy(self) for _ in self.arange_currents
+                ]
+                data = map(
+                    _call_calculate_dIydI_data_j,
+                    dIydI_auxiliary_solvers,
+                    self.arange_currents,
+                )
 
                 for j, d in data:
                     self.dIydI[:, j] = d[0]
