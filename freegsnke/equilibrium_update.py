@@ -28,6 +28,7 @@ from freegs4e import critical
 from scipy import interpolate
 
 from . import limiter_func, virtual_circuits
+from .build_machine import copy_tokamak
 
 
 class Equilibrium(freegs4e.equilibrium.Equilibrium):
@@ -77,7 +78,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         equilibrium = Equilibrium.__new__(Equilibrium)
 
         # attributes that FreeGS4e sets
-        equilibrium.tokamak = self.tokamak.copy()
+        equilibrium.tokamak = copy_tokamak(self.tokamak)
         equilibrium.Rmin = self.Rmin
         equilibrium.Rmax = self.Rmax
         equilibrium.Zmin = self.Zmin
