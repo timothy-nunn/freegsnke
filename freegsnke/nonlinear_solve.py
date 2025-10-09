@@ -2125,7 +2125,7 @@ class nl_solver:
 
         if from_linear:
             self.profiles1 = deepcopy(self.profiles2)
-            self.eq1 = self.eq2
+            self.eq1 = self.eq2.create_auxiliary_equilibrium()
             self.eq2 = self.eq1.create_auxiliary_equilibrium()
         else:
             self.eq1.plasma_psi = np.copy(self.trial_plasma_psi)
