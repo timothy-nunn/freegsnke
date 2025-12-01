@@ -564,6 +564,12 @@ class nl_solver:
                 self.initial_currents_plasma_descriptor[self.retained_modes_mask]
             )
 
+            # Apply mask in case of re-linearisation
+            self.approved_target_dIy = self.approved_target_dIy[
+                self.retained_modes_mask
+            ]
+            self.starting_dI = self.starting_dI[self.retained_modes_mask]
+
             self.remove_modes(eq, self.retained_modes_mask[:-1])
 
             print(
@@ -1047,7 +1053,7 @@ class nl_solver:
 
         else:  # this is particular to the Lao profile coefficients (which there may be few or many of)
             self.initial_profiles_plasma_descriptor = np.concatenate(
-                (profiles.alpha, profiles.beta)
+                (profiles.alpha[:-1], profiles.beta[:-1])
             )
 
             # for each alpha coefficient
@@ -2132,6 +2138,10 @@ class nl_solver:
         self.step_no = -1
 
         # build the linearization if not provided
+        self._force_core_mask_linearization = force_core_mask_linearization
+        self._target_relative_tolerance_linearization = (
+            target_relative_tolerance_linearization
+        )
         self.build_linearization(
             self.eq1,
             self.profiles1,
@@ -2697,6 +2707,7 @@ class nl_solver:
         max_solving_iterations=50,
         custom_active_coil_resistances=None,
         no_GS=False,
+        relinearise=False,
     ):
         """
         Advance the system by one timestep using a nonlinear Newton-Krylov (NK) stepper.
@@ -2856,6 +2867,29 @@ class nl_solver:
                     "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
                     self.handleMyy.tolerance,
                     "domain pixels. The linearization may not be accurate.",
+                )
+
+            if relinearise or myy_flag:
+                print("Relinearising around the current plasma")
+                self.dIydI_ICs = None
+                self.dIydtheta_ICs = None
+                self.build_linearization(
+                    self.eq1,
+                    self.profiles1,
+                    dIydI=None,
+                    dIydtheta=None,
+                    target_relative_tolerance_linearization=self._target_relative_tolerance_linearization,
+                    force_core_mask_linearization=self._force_core_mask_linearization,
+                    verbose=verbose,
+                    plasma_descriptor_function=self.plasma_descriptor_function,
+                )
+                self.handleMyy.force_build_Myy(self.hatIy)
+                self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
+                self.linearised_sol.set_linearization_point(
+                    dIydI=self.dIydI_ICs,
+                    dIydtheta=self.dIydtheta_ICs,
+                    hatIy0=self.blended_hatIy,
+                    Myy_hatIy0=self.Myy_hatIy0,
                 )
 
         else:
