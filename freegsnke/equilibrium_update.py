@@ -122,6 +122,7 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
             self, equilibrium, "xpt", mutable=True, strict=False, allow_deepcopy=True
         )
         copy_into(self, equilibrium, "psi_bndry", strict=False)
+        copy_into(self, equilibrium, "psi_axis", strict=False)
 
         if hasattr(self, "_profiles"):
             equilibrium._profiles = self._profiles.copy()

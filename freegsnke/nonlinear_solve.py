@@ -2134,6 +2134,8 @@ class nl_solver:
         self.hatIy1 = np.copy(self.hatIy)
         self.make_blended_hatIy(self.hatIy1)
 
+        self.jtor0 = self.profiles1.jtor.copy()
+
         self.time = 0
         self.step_no = -1
 
@@ -2685,6 +2687,34 @@ class nl_solver:
                 self.set_solvers()
                 print(self.evol_metal_curr.coil_resist)
 
+    def relinearise(self, *, verbose=False):
+        if verbose:
+            print("Relinearising around the current plasma")
+        original_eq1 = self.eq1.create_auxiliary_equilibrium()
+        original_eq2 = self.eq2.create_auxiliary_equilibrium()
+
+        original_profiles1 = self.profiles1.copy()
+        original_profiles2 = self.profiles2.copy()
+
+        self.dIydI_ICs = None
+        self.dIydtheta_ICs = None
+        self.build_linearization(
+            self.eq1.create_auxiliary_equilibrium(),
+            self.profiles1.copy(),
+            dIydI=None,
+            dIydtheta=None,
+            target_relative_tolerance_linearization=self._target_relative_tolerance_linearization,
+            force_core_mask_linearization=self._force_core_mask_linearization,
+            verbose=verbose,
+            plasma_descriptor_function=self.plasma_descriptor_function,
+        )
+        self.eq1 = original_eq1
+        self.eq2 = original_eq2
+        self.profiles1 = original_profiles1
+        self.profiles2 = original_profiles2
+
+        self.jtor0 = self.profiles1.jtor.copy()
+
     def nlstepper(
         self,
         active_voltage_vec,
@@ -2707,7 +2737,7 @@ class nl_solver:
         max_solving_iterations=50,
         custom_active_coil_resistances=None,
         no_GS=False,
-        relinearise=False,
+        relinearise_threshold=None,
     ):
         """
         Advance the system by one timestep using a nonlinear Newton-Krylov (NK) stepper.
@@ -2812,6 +2842,17 @@ class nl_solver:
         if no_GS and not linear_only:
             raise ValueError("no_GS can only be used when linear_only=True")
 
+        if (
+            linear_only
+            and relinearise_threshold is not None
+            and (
+                np.linalg.norm(self.profiles1.jtor - self.jtor0)
+                / np.linalg.norm(self.jtor0)
+                >= relinearise_threshold
+            )
+        ):
+            self.relinearise(verbose=verbose)
+
         # retrieve the old profile parameter values
         self.get_profiles_values(self.profiles1)
         old_params = self.profiles_parameters_vec
@@ -2867,29 +2908,6 @@ class nl_solver:
                     "The plasma used for calculating the adopted linearization and the plasma in this evolution have departed by more than",
                     self.handleMyy.tolerance,
                     "domain pixels. The linearization may not be accurate.",
-                )
-
-            if relinearise or myy_flag:
-                print("Relinearising around the current plasma")
-                self.dIydI_ICs = None
-                self.dIydtheta_ICs = None
-                self.build_linearization(
-                    self.eq1,
-                    self.profiles1,
-                    dIydI=None,
-                    dIydtheta=None,
-                    target_relative_tolerance_linearization=self._target_relative_tolerance_linearization,
-                    force_core_mask_linearization=self._force_core_mask_linearization,
-                    verbose=verbose,
-                    plasma_descriptor_function=self.plasma_descriptor_function,
-                )
-                self.handleMyy.force_build_Myy(self.hatIy)
-                self.Myy_hatIy0 = self.handleMyy.dot(self.hatIy)
-                self.linearised_sol.set_linearization_point(
-                    dIydI=self.dIydI_ICs,
-                    dIydtheta=self.dIydtheta_ICs,
-                    hatIy0=self.blended_hatIy,
-                    Myy_hatIy0=self.Myy_hatIy0,
                 )
 
         else:
