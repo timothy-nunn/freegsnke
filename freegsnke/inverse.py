@@ -36,6 +36,7 @@ class Inverse_optimizer:
         isoflux_set=None,
         null_points=None,
         psi_vals=None,
+        psin_vals=None,
         curr_vals=None,
     ):
         """Instantiates the object and sets all magnetic constraints to be used.
@@ -53,6 +54,8 @@ class Inverse_optimizer:
             structure [Rcoords, Zcoords, psi_values]
             with Rcoords, Zcoords and psi_values having the same shape
             Sets the desired values of psi for a set of coordinates, possibly an entire map
+        psin_vals : list or np.array, optional
+            structure [Rcoord, Zcoord, normalised_psi_values]
         curr_vals : list, optional
             structure [[coil indexes in the array of coils available for control], [coil current values]]
         """
@@ -81,6 +84,8 @@ class Inverse_optimizer:
             # subtract unimportant vertical shift
             self.psi_vals[2] -= np.mean(self.psi_vals[2])
             self.norm_psi_vals = np.linalg.norm(self.psi_vals[2])
+
+        self.psin_vals = None if psin_vals is None else np.array(psin_vals)
 
         self.curr_vals = curr_vals
         self.curr_loss = 0
@@ -213,6 +218,11 @@ class Inverse_optimizer:
                     R=self.psi_vals[0], Z=self.psi_vals[1]
                 )
 
+        if self.psin_vals is not None:
+            self.G_for_psin = eq.tokamak.createPsiGreensVec(
+                R=self.psin_vals[:, 0], Z=self.psin_vals[:, 1]
+            )
+
     def build_plasma_vals(self, trial_plasma_psi):
         """Builds and stores all the values relative to the plasma,
         based on the provided plasma_psi
@@ -321,6 +331,21 @@ class Inverse_optimizer:
 
         return A, b, [normalised_loss]
 
+    def build_psin_vals_lsq(self, full_currents_vec):
+        self.eq._updatePlasmaPsi(self.eq.plasma_psi)
+        self.eq.psi_bndry = self.profiles.psi_bndry
+
+        # G is the gradient of psi at control points wrt the coil current
+        A = self.G_for_psin[self.control_mask].T
+        # apply the chain rule so that the gradnient is normalised psi wrt coil currents
+        A *= 1.0 / (self.profiles.psi_bndry - self.eq.psi_axis)
+
+        b = self.psin_vals[:, 2] - self.eq.psiNRZ(
+            self.psin_vals[:, 0], self.psin_vals[:, 1]
+        )
+
+        return A, b, np.linalg.norm(b) / np.linalg.norm(self.psin_vals[:, 2])
+
     def build_curr_vals_lsq(self, full_currents_vec):
         """Builds for the ordinary least sq problem associated to the psi values
 
@@ -367,6 +392,12 @@ class Inverse_optimizer:
             A = np.concatenate((A, A_pv), axis=0)
             b = np.concatenate((b, b_pv), axis=0)
             self.psiv_dim = len(b)
+            loss = loss + l
+        if self.psin_vals is not None:
+            A_pnv, b_pnv, l = self.build_psin_vals_lsq(full_currents_vec)
+            A = np.concatenate((A, A_pnv), axis=0)
+            b = np.concatenate((b, b_pnv), axis=0)
+            self.psin_dim = len(b)
             loss = loss + l
         if self.curr_vals is not None:
             A_cv, b_cv, l = self.build_curr_vals_lsq(full_currents_vec)

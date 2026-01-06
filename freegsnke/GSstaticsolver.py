@@ -997,6 +997,8 @@ class NKGSsolver:
                 else:
                     this_l2_reg = 1e-4 * np.array(l2_reg)
 
+            constrain.eq = eq
+            constrain.profiles = profiles
             if (
                 use_full_Jacobian
                 * (rel_change_full < full_jacobian_handover[0])
