@@ -19,9 +19,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from copy import deepcopy
-
-import freegs4e
+import cvxpy
 import numpy as np
 from scipy import interpolate
 
@@ -413,8 +411,48 @@ class Inverse_optimizer:
                     f"Expected l2_reg to have length equal to number of coils being controlled ({self.n_control_coils}), but got {len(l2_reg)}."
                 )
             reg_matrix = np.diag(l2_reg)
-        mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
-        delta_current = np.dot(mat, np.dot(self.A.T, self.b))
+
+        delta_current = None
+        if self.coil_current_limits is not None:
+            delta = cvxpy.Variable(self.n_control_coils)
+
+            coil_upper_limits, coil_lower_limits = self.coil_current_limits
+            coil_limits = []
+            for coil_index, ul in enumerate(coil_upper_limits):
+                if ul is not None:
+                    print(
+                        f"{full_currents_vec[self.control_mask][coil_index]} + {delta} <= {ul}"
+                    )
+                    coil_limits.append(
+                        full_currents_vec[self.control_mask][coil_index]
+                        + delta[coil_index]
+                        <= ul
+                    )
+
+            for coil_index, ll in enumerate(coil_lower_limits):
+                if ll is not None:
+                    print(
+                        f"{full_currents_vec[self.control_mask][coil_index]} + {delta} >= {ll}"
+                    )
+                    coil_limits.append(
+                        full_currents_vec[self.control_mask][coil_index]
+                        + delta[coil_index]
+                        >= ll
+                    )
+
+            problem = cvxpy.Problem(
+                cvxpy.Minimize(
+                    cvxpy.sum_squares(self.A @ delta - self.b)
+                    + cvxpy.sum_squares(reg_matrix @ delta)
+                ),
+                coil_limits or None,
+            )
+            problem.solve()
+            delta_current = delta.value
+
+        if delta_current is None:
+            mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
+            delta_current = np.dot(mat, np.dot(self.A.T, self.b))
 
         return delta_current, np.linalg.norm(self.loss)
 

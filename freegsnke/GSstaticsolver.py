@@ -20,8 +20,7 @@ You should have received a copy of the GNU Lesser General Public License
 along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from copy import deepcopy
-
+import cvxpy
 import freegs4e
 import numpy as np
 from freegs4e.gradshafranov import Greens
@@ -891,6 +890,37 @@ class NKGSsolver:
             reg_matrix = l2_reg * np.eye(constrain.n_control_coils)
         else:
             reg_matrix = np.diag(l2_reg)
+
+        delta_current = None
+        if constrain.coil_current_limits is not None:
+            delta = cvxpy.Variable(constrain.n_control_coils)
+
+            coil_upper_limits, coil_lower_limits = constrain.coil_current_limits
+            coil_limits = []
+            for coil_index, ul in enumerate(coil_upper_limits):
+                if ul is not None:
+                    coil_limits.append(
+                        currents[constrain.control_mask][coil_index] + delta[coil_index]
+                        <= ul
+                    )
+
+            for coil_index, ll in enumerate(coil_lower_limits):
+                if ll is not None:
+                    coil_limits.append(
+                        currents[constrain.control_mask][coil_index] + delta[coil_index]
+                        >= ll
+                    )
+
+            problem = cvxpy.Problem(
+                cvxpy.Minimize(
+                    cvxpy.sum_squares(constrain.A @ delta - constrain.b)
+                    + cvxpy.sum_squares(reg_matrix @ delta)
+                ),
+                coil_limits or None,
+            )
+            problem.solve()
+            delta_current = delta.value
+
         mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
         Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
         loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
