@@ -25,6 +25,8 @@ import pickle
 import freegs4e.equilibrium
 import numpy as np
 from freegs4e import critical
+from freegs4e.equilibrium import PsiGuessParabolicJtor as PsiGuessParabolicJtorFreeGS4E
+from freegs4e.gradshafranov import Greens, mu0
 from scipy import interpolate
 
 from . import limiter_func
@@ -324,3 +326,59 @@ class Equilibrium(freegs4e.equilibrium.Equilibrium):
         print(
             "Initial guess for plasma flux initialised using file provided at EQUILIBRIUM_PATH."
         )
+
+
+class PsiGuessParabolicJtor(PsiGuessParabolicJtorFreeGS4E):
+    def __call__(self, eq: Equilibrium):
+        """Calculates the initial psi guess by approximating the Jtor and
+        applying a linear Grad-Shafranov step.
+
+        This is different to the PsiGuessParabolicJtor because this version
+        """
+        # ensure equilibrium has attribute plasma_psi which will be overwritten later
+        eq.plasma_psi = np.zeros((eq.nx, eq.ny))
+
+        jtor_guess = self.parabolic_jtor(eq, self._Ip)
+        rhs = -mu0 * eq.R * jtor_guess
+
+        bndry_indices = np.concatenate(
+            [
+                [(x, 0) for x in range(eq.nx)],
+                [(x, eq.ny - 1) for x in range(eq.nx)],
+                [(0, y) for y in np.arange(1, eq.ny - 1)],
+                [(eq.nx - 1, y) for y in np.arange(1, eq.ny - 1)],
+            ]
+        )
+
+        # matrices of responses of boundary locations to each grid positions
+        greenfunc = Greens(
+            eq.R[np.newaxis, :, :],
+            eq.Z[np.newaxis, :, :],
+            eq.R_1D[bndry_indices[:, 0]][:, np.newaxis, np.newaxis],
+            eq.Z_1D[bndry_indices[:, 1]][:, np.newaxis, np.newaxis],
+        )
+        # Prevent infinity/nan by removing Greens(x,y;x,y)
+        zeros = np.ones_like(greenfunc)
+        zeros[
+            np.arange(len(bndry_indices)), bndry_indices[:, 0], bndry_indices[:, 1]
+        ] = 0
+        dR = eq.R[1, 0] - eq.R[0, 0]
+        dZ = eq.Z[0, 1] - eq.Z[0, 0]
+        greenfunc = greenfunc * zeros * dR * dZ
+
+        psi_boundary = np.zeros_like(eq.R)
+        psi_bnd = np.tensordot(greenfunc, jtor_guess, axes=([1, 2], [0, 1]))
+
+        psi_boundary[:, 0] = psi_bnd[: eq.nx]
+        psi_boundary[:, -1] = psi_bnd[eq.nx : 2 * eq.nx]
+        psi_boundary[0, 1 : eq.ny - 1] = psi_bnd[2 * eq.nx : 2 * eq.nx + eq.ny - 2]
+        psi_boundary[-1, 1 : eq.ny - 1] = psi_bnd[2 * eq.nx + eq.ny - 2 :]
+
+        rhs[0, :] = psi_boundary[0, :]
+        rhs[:, 0] = psi_boundary[:, 0]
+        rhs[-1, :] = psi_boundary[-1, :]
+        rhs[:, -1] = psi_boundary[:, -1]
+
+        psi = eq.callSolver(psi=psi_boundary, rhs=rhs)
+
+        return psi * self._psi_scale
