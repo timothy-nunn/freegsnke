@@ -891,39 +891,14 @@ class NKGSsolver:
         else:
             reg_matrix = np.diag(l2_reg)
 
-        delta_current = None
         if constrain.coil_current_limits is not None:
-            delta = cvxpy.Variable(constrain.n_control_coils)
-
-            coil_upper_limits, coil_lower_limits = constrain.coil_current_limits
-            coil_limits = []
-            for coil_index, ul in enumerate(coil_upper_limits):
-                if ul is not None:
-                    coil_limits.append(
-                        currents[constrain.control_mask][coil_index] + delta[coil_index]
-                        <= ul
-                    )
-
-            for coil_index, ll in enumerate(coil_lower_limits):
-                if ll is not None:
-                    coil_limits.append(
-                        currents[constrain.control_mask][coil_index] + delta[coil_index]
-                        >= ll
-                    )
-
-            problem = cvxpy.Problem(
-                cvxpy.Minimize(
-                    cvxpy.sum_squares(constrain.A @ delta - constrain.b)
-                    + cvxpy.sum_squares(reg_matrix @ delta)
-                ),
-                coil_limits or None,
+            Newton_delta_current, loss = constrain.optimize_currents_quadratic(
+                currents, reg_matrix
             )
-            problem.solve()
-            delta_current = delta.value
-
-        mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
-        Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
-        loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
+        else:
+            mat = np.linalg.inv(np.matmul(self.dbdI.T, self.dbdI) + reg_matrix)
+            Newton_delta_current = np.dot(mat, np.dot(self.dbdI.T, -b0))
+            loss = np.linalg.norm(b0 + np.dot(self.dbdI, Newton_delta_current))
 
         return Newton_delta_current, loss
 
@@ -1061,6 +1036,7 @@ class NKGSsolver:
 
         iterations = 0
         damping = 1
+        loss = np.inf
         self.rel_psit_updates = [max_rel_psit]
         previous_rel_delta_psit = 1
         self.constrain_loss = []
@@ -1101,8 +1077,8 @@ class NKGSsolver:
 
         while (
             (rel_change_full > target_relative_tolerance)
-            + (previous_rel_delta_psit > target_relative_psit_update)
-        ) * (iterations < max_solving_iterations):
+            or (previous_rel_delta_psit > target_relative_psit_update)
+        ) and (iterations < max_solving_iterations):
             if verbose:
                 print("Iteration: " + str(iterations))
 
@@ -1295,6 +1271,7 @@ class NKGSsolver:
             else:
                 print(
                     f"Inverse static solve SUCCESS. Tolerance {rel_change_full:.2e} (vs. requested {target_relative_tolerance}) reached in {int(iterations)}/{int(max_solving_iterations)} iterations."
+                    f" Contraint losses: {loss}"
                 )
 
     def solve(

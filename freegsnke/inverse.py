@@ -412,49 +412,63 @@ class Inverse_optimizer:
                 )
             reg_matrix = np.diag(l2_reg)
 
-        delta_current = None
         if self.coil_current_limits is not None:
-            delta = cvxpy.Variable(self.n_control_coils)
-
-            coil_upper_limits, coil_lower_limits = self.coil_current_limits
-            coil_limits = []
-            for coil_index, ul in enumerate(coil_upper_limits):
-                if ul is not None:
-                    print(
-                        f"{full_currents_vec[self.control_mask][coil_index]} + {delta} <= {ul}"
-                    )
-                    coil_limits.append(
-                        full_currents_vec[self.control_mask][coil_index]
-                        + delta[coil_index]
-                        <= ul
-                    )
-
-            for coil_index, ll in enumerate(coil_lower_limits):
-                if ll is not None:
-                    print(
-                        f"{full_currents_vec[self.control_mask][coil_index]} + {delta} >= {ll}"
-                    )
-                    coil_limits.append(
-                        full_currents_vec[self.control_mask][coil_index]
-                        + delta[coil_index]
-                        >= ll
-                    )
-
-            problem = cvxpy.Problem(
-                cvxpy.Minimize(
-                    cvxpy.sum_squares(self.A @ delta - self.b)
-                    + cvxpy.sum_squares(reg_matrix @ delta)
-                ),
-                coil_limits or None,
+            delta_current, loss = self.optimize_currents_quadratic(
+                full_currents_vec, reg_matrix
             )
-            problem.solve()
-            delta_current = delta.value
-
-        if delta_current is None:
+        else:
             mat = np.linalg.inv(np.matmul(self.A.T, self.A) + reg_matrix)
             delta_current = np.dot(mat, np.dot(self.A.T, self.b))
+            loss = np.linalg.norm(self.loss)
 
-        return delta_current, np.linalg.norm(self.loss)
+        return delta_current, loss
+
+    def optimize_currents_quadratic(self, full_currents_vec, reg_matrix, *, mu=10):
+        delta = cvxpy.Variable(self.n_control_coils)
+        coil_upper_slack = cvxpy.Variable(self.n_control_coils, pos=True)
+        coil_lower_slack = cvxpy.Variable(self.n_control_coils, pos=True)
+
+        coil_slack_scale = mu * np.diag(self.A.T @ self.A).max()
+
+        coil_upper_limits, coil_lower_limits = self.coil_current_limits
+        coil_limits = []
+        for coil_index, ul in enumerate(coil_upper_limits):
+            if ul is not None:
+                coil_limits.append(
+                    full_currents_vec[self.control_mask][coil_index] + delta[coil_index]
+                    <= ul + coil_upper_slack[coil_index]
+                )
+
+        for coil_index, ll in enumerate(coil_lower_limits):
+            if ll is not None:
+                coil_limits.append(
+                    full_currents_vec[self.control_mask][coil_index] + delta[coil_index]
+                    >= ll - coil_lower_slack[coil_index]
+                )
+
+        problem = cvxpy.Problem(
+            cvxpy.Minimize(
+                cvxpy.sum_squares(self.A @ delta - self.b)
+                + cvxpy.sum_squares(reg_matrix @ delta)
+                + coil_slack_scale
+                * (
+                    cvxpy.sum_squares(coil_upper_slack)
+                    + cvxpy.sum_squares(coil_lower_slack)
+                )
+            ),
+            coil_limits or None,
+        )
+        problem.solve(solver=cvxpy.CLARABEL)
+
+        existing_loss = np.linalg.norm(self.loss)
+        _, coil_limit_loss = self.coil_current_limit_constraint(
+            full_currents_vec,
+            current_loss=existing_loss,
+            bpdelta_rel_increase=0.1,
+            bmdelta_rel_increase=0.0,
+        )
+
+        return delta.value, existing_loss + coil_limit_loss
 
     def coil_current_limit_constraint(
         self,
