@@ -423,42 +423,41 @@ class Inverse_optimizer:
 
         return delta_current, loss
 
-    def optimize_currents_quadratic(self, full_currents_vec, reg_matrix, *, mu=10):
+    def optimize_currents_quadratic(self, full_currents_vec, reg_matrix):
         delta = cvxpy.Variable(self.n_control_coils)
-        coil_upper_slack = cvxpy.Variable(self.n_control_coils, pos=True)
-        coil_lower_slack = cvxpy.Variable(self.n_control_coils, pos=True)
 
-        coil_slack_scale = mu * np.diag(self.A.T @ self.A).max()
+        coil_slack_scale = 1e6 * np.diag(self.A.T @ self.A).max()
 
         coil_upper_limits, coil_lower_limits = self.coil_current_limits
-        coil_limits = []
+        coil_violations = 0.0
         for coil_index, ul in enumerate(coil_upper_limits):
             if ul is not None:
-                coil_limits.append(
-                    full_currents_vec[self.control_mask][coil_index] + delta[coil_index]
-                    <= ul + coil_upper_slack[coil_index]
+                violation = (
+                    full_currents_vec[self.control_mask][coil_index]
+                    + delta[coil_index]
+                    - ul
+                )
+                coil_violations += cvxpy.log_sum_exp(
+                    cvxpy.hstack([0.0, coil_slack_scale * violation])
                 )
 
         for coil_index, ll in enumerate(coil_lower_limits):
             if ll is not None:
-                coil_limits.append(
+                violation = ll - (
                     full_currents_vec[self.control_mask][coil_index] + delta[coil_index]
-                    >= ll - coil_lower_slack[coil_index]
+                )
+                coil_violations += cvxpy.log_sum_exp(
+                    cvxpy.hstack([0.0, coil_slack_scale * violation])
                 )
 
         problem = cvxpy.Problem(
             cvxpy.Minimize(
                 cvxpy.sum_squares(self.A @ delta - self.b)
                 + cvxpy.sum_squares(reg_matrix @ delta)
-                + coil_slack_scale
-                * (
-                    cvxpy.sum_squares(coil_upper_slack)
-                    + cvxpy.sum_squares(coil_lower_slack)
-                )
+                + coil_violations
             ),
-            coil_limits or None,
         )
-        problem.solve(solver=cvxpy.CLARABEL)
+        problem.solve()
 
         existing_loss = np.linalg.norm(self.loss)
         _, coil_limit_loss = self.coil_current_limit_constraint(
