@@ -59,8 +59,10 @@ class Inverse_optimizer:
             A list of [coil upper limits, coil lower limits] where the limits are a list with the length of the number of actively
             controlled coils. E.g. [[upper limit coil 1, None, None, None], [None, None, lower limit coil 3, lower limit coil 4]].
         psi_norm_limits : list or np.ndarray, optional
-            structure [Rcoord, Zcoord, normalised_psi_values]
-            Attempts to constrain the normalised psi to be greater than or equal to the normalised_psi_values at (Rcoord, Zcoord)
+            structure [Rcoord, Zcoord, normalised_psi, constraint_direction]
+            Attempts to constrain the normalised psi to be:
+            * Greater than or equal to normalised_psi at (Rcoord, Zcoord) if constraint_direction = 1
+            * Less than or equal to normalised_psi at (Rcoord, Zcoord) if constraint_direction = -1
 
         """
 
@@ -450,6 +452,9 @@ class Inverse_optimizer:
         A=None,
         b=None,
     ):
+        A = self.A if A is None else A
+        b = self.b if b is None else b
+
         delta = cvxpy.Variable(self.n_control_coils)
         slack_variables = []
         constraints = []
@@ -460,7 +465,7 @@ class Inverse_optimizer:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
 
-            coil_limit_slack_scale = mu_coils * np.diag(self.A.T @ self.A).max()
+            coil_limit_slack_scale = mu_coils * np.diag(A.T @ A).max()
             coil_upper_limits, coil_lower_limits = self.coil_current_limits
             for coil_index, ul in enumerate(coil_upper_limits):
                 if ul is not None:
@@ -487,22 +492,33 @@ class Inverse_optimizer:
             eq._updatePlasmaPsi(eq.plasma_psi)
             eq.psi_bndry = profiles.psi_bndry
 
-            psi_norm_slack = cvxpy.Variable(self.psi_norm_vals.shape[0], nonneg=False)
-
             psi_norm_A = self.G_psi_norm[self.control_mask].T
             # apply chain rule because G_psi_norm is greens wrt to psi, not psi_norm
             psi_norm_A /= eq.psi_bndry - eq.psi_axis
-            psi_norm_b = self.psi_norm_vals[:, 2] - eq.psiNRZ(
-                self.psi_norm_vals[:, 0], self.psi_norm_vals[:, 1]
-            )
 
-            constraints.append(psi_norm_A @ delta >= psi_norm_b + psi_norm_slack)
+            for con_idx in range(self.psi_norm_vals.shape[0]):
+                current_psi_norm = eq.psiNRZ(
+                    self.psi_norm_vals[con_idx, 0], self.psi_norm_vals[con_idx, 1]
+                )
+                psi_norm_slack = cvxpy.Variable(1, nonneg=True)
 
-            psi_norm_slack_scale = mu_psi_norm * np.diag(self.A.T @ self.A).max()
-            slack_variables.append(psi_norm_slack_scale * psi_norm_slack)
+                if self.psi_norm_vals[con_idx, 3] == 1:
+                    constraints.append(
+                        (psi_norm_A[con_idx, :] @ delta) + current_psi_norm
+                        >= self.psi_norm_vals[:, 2] - psi_norm_slack
+                    )
+                elif self.psi_norm_vals[con_idx, 3] == -1:
+                    constraints.append(
+                        (psi_norm_A[con_idx, :] @ delta) + current_psi_norm
+                        <= self.psi_norm_vals[:, 2] + psi_norm_slack
+                    )
+                else:
+                    raise ValueError(
+                        f"Unknown constraint direction {self.psi_norm_vals[con_idx, 3]} for psi_norm constraint {con_idx+1}"
+                    )
 
-        A = self.A if A is None else A
-        b = self.b if b is None else b
+                psi_norm_slack_scale = mu_psi_norm * np.diag(A.T @ A).max()
+                slack_variables.append(psi_norm_slack_scale * psi_norm_slack)
 
         # Minimise the objectives (the least squares objective + regularisation + slack variables)
         minimisation_expression = cvxpy.sum_squares(A @ delta - b) + cvxpy.quad_form(
