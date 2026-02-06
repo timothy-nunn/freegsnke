@@ -460,7 +460,6 @@ class Inverse_optimizer:
         constraints = []
 
         # Setup the coil limits slack variables and constraints
-
         if self.coil_current_limits is not None:
             coil_limits_upper_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
             coil_limits_lower_slack = cvxpy.Variable(self.n_control_coils, nonneg=True)
@@ -470,17 +469,17 @@ class Inverse_optimizer:
             for coil_index, ul in enumerate(coil_upper_limits):
                 if ul is not None:
                     constraints.append(
-                        full_currents_vec[self.control_mask][coil_index]
-                        + delta[coil_index]
-                        <= ul + coil_limits_upper_slack[coil_index]
+                        (full_currents_vec[self.control_mask][coil_index] / 1000)
+                        + (delta[coil_index] / 1000)
+                        <= (ul / 1000) + coil_limits_upper_slack[coil_index]
                     )
 
             for coil_index, ll in enumerate(coil_lower_limits):
                 if ll is not None:
                     constraints.append(
-                        full_currents_vec[self.control_mask][coil_index]
-                        + delta[coil_index]
-                        >= ll - coil_limits_lower_slack[coil_index]
+                        (full_currents_vec[self.control_mask][coil_index] / 1000)
+                        + (delta[coil_index] / 1000)
+                        >= (ll / 1000) - coil_limits_lower_slack[coil_index]
                     )
 
             slack_variables.append(coil_limit_slack_scale * coil_limits_upper_slack)
@@ -530,7 +529,7 @@ class Inverse_optimizer:
         problem = cvxpy.Problem(
             cvxpy.Minimize(minimisation_expression), constraints or None
         )
-        problem.solve(solver=cvxpy.CLARABEL)
+        problem.solve(solver=cvxpy.CLARABEL, tol_infeas_abs=1e-12, tol_infeas_rel=1e-10)
 
         slack_loss = sum([i.value.sum() for i in slack_variables])
         return (

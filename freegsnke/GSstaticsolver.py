@@ -900,7 +900,7 @@ class NKGSsolver:
             or constrain.psi_norm_vals is not None
         ):
             Newton_delta_current, loss = constrain.optimize_currents_quadratic(
-                eq, profiles, currents, reg_matrix, A=self.dbdI, b=b0
+                eq, profiles, currents, reg_matrix, A=self.dbdI, b=-b0
             )
         else:
             Newton_delta_current = np.linalg.solve(
