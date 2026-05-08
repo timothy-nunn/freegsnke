@@ -311,58 +311,6 @@ class metal_currents:
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
 
-    # def reset_mode(
-    #     self,
-    #     flag_vessel_eig,
-    #     flag_plasma,
-    #     plasma_pts=None,
-    #     max_mode_frequency=1,
-    #     max_internal_timestep=0.0001,
-    #     full_timestep=0.0001,
-    # ):
-    #     """Resets init inputs.
-
-    #     flag_vessel_eig : bool
-    #         Flag re whether vessel eigenmodes are used or not.
-    #     flag_plasma : bool
-    #         Whether to include plasma in circuit equation. If True, plasma_pts
-    #         must be provided.
-    #     plasma_pts : freegsnke.limiter_handler.plasma_pts
-    #         Domain points in the domain that are included in the evolutive calculations.
-    #         A typical choice would be all domain points inside the limiter. Defaults to None.
-    #     max_mode_frequency : float
-    #         Maximum frequency of vessel eigenmodes to include in circuit equation.
-    #         Defaults to 1. Unit is s^-1.
-    #     max_internal_timestep : float
-    #         Maximum value of the 'internal' timestep for implicit euler solver. Defaults to .0001.
-    #         The 'internal' timestep is the one actually used by the solver.
-    #     full_timestep : float
-    #         Timestep by which the equations are advanced. If full_timestep>max_internal_timestep
-    #         multiple 'internal' steps are executed. Defaults to .0001.
-    #     """
-    #     control = self.max_internal_timestep != max_internal_timestep
-    #     self.max_internal_timestep = max_internal_timestep
-
-    #     control += self.full_timestep != full_timestep
-    #     self.full_timestep = full_timestep
-
-    #     control += flag_plasma != self.flag_plasma
-    #     self.flag_plasma = flag_plasma
-
-    #     if control * flag_plasma:
-    #         self.plasma_pts = plasma_pts
-    #         self.Mey_matrix = self.Mey(eq)
-
-    #     control += flag_vessel_eig != self.flag_vessel_eig
-    #     self.flag_vessel_eig = flag_vessel_eig
-
-    #     if flag_vessel_eig:
-    #         control += max_mode_frequency != self.max_mode_frequency
-    #         self.max_mode_frequency = max_mode_frequency
-    #     if control * flag_vessel_eig:
-    #         self.initialize_for_eig(self.selected_modes_mask)
-    #     else:
-    #         self.initialize_for_no_eig()
 
     def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
         """Right-hand-side of circuit equation in eigenmode basis with plasma.
@@ -534,37 +482,3 @@ class metal_currents:
             greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
             mey[j] = np.sum(greenm, axis=-1)
         return 2 * np.pi * mey
-
-    # def Mey_f(
-    #     self,
-    #     eq,
-    #     green_f
-    #     ):
-    #     """Calculates values of the function green_f for the matrix of
-    #     plasma_pts x all vessel coils. For clarity, the function Mey is Mey_f(green_f = Greens)
-
-    #     Parameters
-    #     -------
-    #     eq : class
-    #         FreeGSNKE equilibrium Object
-    #     green_f : function
-    #         with same structure as Greens, i.e. Greens(R1,Z1, R2,Z2)
-
-    #     Returns
-    #     -------
-    #     Mey : np.ndarray
-    #         Array of 'inductance values' between plasma grid points and all vessel coils
-    #     """
-    #     coils_dict = eq.tokamak.coils_dict
-    #     mey = np.zeros((eq.tokamak.n_coils, len(self.plasma_pts)))
-    #     for j, labelj in enumerate(eq.tokamak.coils_list):
-    #         greenm = green_f(
-    #             coils_dict[labelj]["coords"][0][np.newaxis, :],
-    #             coils_dict[labelj]["coords"][1][np.newaxis, :],
-    #             self.plasma_pts[:, 0, np.newaxis],
-    #             self.plasma_pts[:, 1, np.newaxis],
-    #         )
-    #         greenm *= coils_dict[labelj]["polarity"][np.newaxis, :]
-    #         greenm *= coils_dict[labelj]["multiplier"][np.newaxis, :]
-    #         mey[j] = np.sum(greenm, axis=-1)
-    #     return 2 * np.pi * mey
