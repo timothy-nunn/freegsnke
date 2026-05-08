@@ -1,5 +1,5 @@
 """
-Defines the metal_currents object, which handles the circuit equations of 
+Defines the metal_currents object, which handles the circuit equations of
 all metal structures in the tokamak - both active PF coils and passive structures.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
@@ -15,9 +15,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -247,9 +247,10 @@ class metal_currents:
 
         # selected_modes_mask = [True,...,True, False,...,False]
         # this includes the actives too
-        self.selected_modes_mask = np.concatenate(
-            (np.ones(self.n_active_coils).astype(bool), selected_modes_mask)
-        )
+        self.selected_modes_mask = np.concatenate((
+            np.ones(self.n_active_coils).astype(bool),
+            selected_modes_mask,
+        ))
         if verbose:
             print(f"   Active coils")
             print(
@@ -422,9 +423,10 @@ class metal_currents:
         active_coil_resistances : ndarray
             Updated resistances for the active coils only (length = n_active_coils).
         """
-        self.coil_resist = np.concatenate(
-            (active_coil_resistances, self.coil_resist[self.n_active_coils :])
-        )
+        self.coil_resist = np.concatenate((
+            active_coil_resistances,
+            self.coil_resist[self.n_active_coils :],
+        ))
         self.active_coil_resistances = np.copy(self.coil_resist[: self.n_active_coils])
         self.Rm1 = 1 / self.coil_resist
         self.build_rm1l()
