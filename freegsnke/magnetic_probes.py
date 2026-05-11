@@ -402,7 +402,7 @@ class Probes:
             ))
         return array
 
-    def psi_floop_all_coils(self, eq, probe="floops"):
+    def psi_floop_all_coils(self, tokamak, probe="floops"):
         """
         Compute the total poloidal flux at all flux loop locations due to all coils.
 
@@ -430,8 +430,8 @@ class Probes:
         ψ_total = Σ_i I_i G_i
         - The ordering of coils is defined by `self.coil_names`.
         """
-        array_of_coil_currents = self.get_coil_currents(eq.tokamak)
-        if probe == "floops":
+        array_of_coil_currents = self.get_coil_currents(tokamak)
+        if probe == "floops" and hasattr(self, "greens_psi_coils_floops"):
             greens = self.greens_psi_coils_floops
 
         psi_from_all_coils = np.sum(
@@ -568,7 +568,7 @@ class Probes:
         `psi_from_plasma(eq)`
         - Assumes linear superposition of magnetic fields.
         """
-        return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
+        return self.psi_floop_all_coils(eq.tokamak) + self.psi_from_plasma(eq)
 
     def create_greens_BrBz_single_coil(self, eq, coil_key, probe="pickups"):
         """
