@@ -53,13 +53,13 @@ class metal_currents:
 
     def __init__(
         self,
-        eq,
+        tokamak,
         flag_vessel_eig,
-        flag_plasma,
         max_mode_frequency,
         max_internal_timestep,
         full_timestep,
         plasma_pts=None,
+        eq=None,
         coil_resist=None,
         coil_self_ind=None,
         verbose=True,
@@ -73,15 +73,22 @@ class metal_currents:
 
         Parameters
         ----------
-        eq : FreeGSNKE equilibrium object
-            Initial equilibrium used to define grid geometry, machine configuration,
-            and linearisation for the evolution solver. Changing machine geometry
-            requires re-instantiation.
+
+        tokamak : Machine
+            A Tokamak object that contains information about the coils and their resistances and inductances.
         flag_vessel_eig : bool
             If True, include vessel eigenmodes in the circuit model.
-        flag_plasma : bool
-            If True, include plasma coupling in the circuit equations.
-            In this case, `plasma_pts` must be provided.
+        eq : FreeGSNKE equilibrium Object
+            If an eq is provided, the plasma will be used in the circuit equation.
+            Initial equilibrium. This is used to set the domain/grid properties
+            as well as the machine properties.
+            Furthermore, eq will be used to set up the linearization used by the linear evolutive solver.
+            It can be changed later by initializing a new set of initial conditions.
+            Note however that, to change either the machine or limiter properties
+            it will be necessary to instantiate a new nl_solver object.
+        plasma_pts : freegsnke.limiter_handler.plasma_pts
+            Domain points in the domain that are included in the evolutive calculations.
+            A typical choice would be all domain points inside the limiter. Defaults to None.
         max_mode_frequency : float
             Maximum vessel eigenmode frequency to include (s⁻¹).
         max_internal_timestep : float
@@ -102,9 +109,11 @@ class metal_currents:
             If True, enable diagnostic output during setup.
         """
 
-        self.n_coils = eq.tokamak.n_coils
-        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_coils = tokamak.n_coils
+        self.n_active_coils = tokamak.n_active_coils
         self.verbose = verbose
+
+        self._eq = eq
 
         # prepare resistance data
         if coil_resist is not None:
@@ -114,7 +123,7 @@ class metal_currents:
                 )
             self.coil_resist = coil_resist
         else:
-            self.coil_resist = eq.tokamak.coil_resist
+            self.coil_resist = tokamak.coil_resist
 
         self.Rm1 = 1.0 / self.coil_resist
         # self.R = np.copy(self.coil_resist)
@@ -128,12 +137,11 @@ class metal_currents:
                 )
             self.coil_self_ind = coil_self_ind
         else:
-            self.coil_self_ind = eq.tokamak.coil_self_ind
+            self.coil_self_ind = tokamak.coil_self_ind
 
         self.build_rm1l()
 
         self.flag_vessel_eig = flag_vessel_eig
-        self.flag_plasma = flag_plasma
 
         self.max_internal_timestep = max_internal_timestep
         self.full_timestep = full_timestep
@@ -153,9 +161,17 @@ class metal_currents:
             self.max_mode_frequency = 0
             self.initialize_for_no_eig()
 
-        if flag_plasma:
+        if self._eq is not None:
+            if plasma_pts is None:
+                raise RuntimeError(
+                    "eq provided to metal_currents but plasma_pts was not (and is required)"
+                )
             self.plasma_pts = plasma_pts
-            self.Mey_matrix = self.Mey(eq)
+            self.Mey_matrix = self.Mey(self._eq)
+        elif plasma_pts is not None:
+            raise RuntimeError(
+                "plasma_pts provided to metal_currents but eq was not (and is required)"
+            )
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -399,7 +415,7 @@ class metal_currents:
             full_timestep=self.full_timestep,
         )
 
-        if self.flag_plasma:
+        if self._eq is not None:
             self.forcing_term = self.forcing_term_eig_plasma
         else:
             self.forcing_term = self.forcing_term_eig_no_plasma
@@ -460,7 +476,7 @@ class metal_currents:
             full_timestep=self.full_timestep,
         )
 
-        if self.flag_plasma:
+        if self._eq is not None:
             self.forcing_term = self.forcing_term_no_eig_plasma
         else:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
