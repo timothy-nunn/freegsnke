@@ -247,14 +247,14 @@ class Probes:
             )
         return array
 
-    def psi_floop_all_coils(self, eq, probe="floops"):
+    def psi_floop_all_coils(self, tokamak, probe="floops"):
         """
         compute flux function summed over all coils.
         returns array of flux values at the positions of the floop probes by default.
         new probes can be used instead (just change which greens function is used)
         """
-        array_of_coil_currents = self.get_coil_currents(eq.tokamak)
-        if probe == "floops":
+        array_of_coil_currents = self.get_coil_currents(tokamak)
+        if probe == "floops" and hasattr(self, "greens_psi_coils_floops"):
             greens = self.greens_psi_coils_floops
 
         psi_from_all_coils = np.sum(
@@ -314,7 +314,7 @@ class Probes:
         """
         total flux for all floop probes
         """
-        return self.psi_floop_all_coils(eq) + self.psi_from_plasma(eq)
+        return self.psi_floop_all_coils(eq.tokamak) + self.psi_from_plasma(eq)
 
     """
     Things for pickup coils
