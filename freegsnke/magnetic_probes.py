@@ -199,13 +199,11 @@ class Probes:
         self.floop_order = [probe["name"] for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
-        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(
-            eq.tokamak, "floops"
+        self.greens_psi_coils_floops = self.create_greens_psi_all_coils_floops(
+            eq.tokamak
         )
         self.greens_psi_plasma_floops = {}
-        self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
-            eq, "floops"
-        )
+        self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma_floops(eq)
 
         # # PICKUP COILS
         # # Positions and orientations - 3d vectors of [R, theta, Z]
@@ -217,14 +215,13 @@ class Probes:
         # # Initialise greens functions for pickups
         self.greens_br_plasma_pickup, self.greens_bz_plasma_pickup = {}, {}
         self.greens_br_coils_pickup, self.greens_bz_coils_pickup = (
-            self.greens_BrBz_all_coils(eq, "pickups")
+            self.greens_BrBz_all_coils_pickups(eq)
         )
-
         self.greens_B_plasma_oriented = {}
-        self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
-            eq, "pickups"
+        self.greens_B_plasma_oriented[eq_key] = (
+            self.create_greens_B_oriented_plasma_pickups(eq)
         )
-        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(eq, "pickups")
+        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils_pickups(eq)
 
         # Other probes - to add in future...
 
@@ -327,7 +324,7 @@ class Probes:
         eq_key = (eq.Rmin, eq.Rmax, eq.Zmin, eq.Zmax, nx, ny)
         return eq_key
 
-    def create_greens_psi_single_coil(self, tokamak, coil_key, probe="floops"):
+    def create_greens_psi_single_coil_floops(self, tokamak, coil_key):
         """
         Compute the Green's function contribution of a single coil to probe signals.
 
@@ -359,15 +356,14 @@ class Probes:
         - The result corresponds to a linear response (unit current assumption).
         """
 
-        if probe == "floops":
-            pos_R = self.floop_pos[:, 0]
-            pos_Z = self.floop_pos[:, 1]
+        pos_R = self.floop_pos[:, 0]
+        pos_Z = self.floop_pos[:, 1]
 
         greens_psi_coil = tokamak[coil_key].controlPsi(pos_R, pos_Z)
 
         return greens_psi_coil
 
-    def create_greens_psi_all_coils(self, tokamak, probe="floops"):
+    def create_greens_psi_all_coils_floops(self, tokamak):
         """
         Compute the Green's function matrix relating all coils to all probe
         locations for poloidal flux measurements.
@@ -401,14 +397,14 @@ class Probes:
         """
 
         array = np.array([]).reshape(0, self.number_floops)
-        for key in self.coils_dict:
+        for key in self.coils_dict.keys():
             array = np.vstack((
                 array,
-                self.create_greens_psi_single_coil(tokamak, key, probe),
+                self.create_greens_psi_single_coil_floops(tokamak, key),
             ))
         return array
 
-    def psi_floop_all_coils(self, tokamak, probe="floops"):
+    def psi_floop_all_coils(self, tokamak):
         """
         Compute the total poloidal flux at all flux loop locations due to all coils.
 
@@ -437,10 +433,10 @@ class Probes:
         - The ordering of coils is defined by `self.coil_names`.
         """
         array_of_coil_currents = self.get_coil_currents(tokamak)
-        if probe == "floops" and hasattr(self, "greens_psi_coils_floops"):
+        if hasattr(self, "greens_psi_coils_floops"):
             greens = self.greens_psi_coils_floops
         else:
-            greens = self.create_greens_psi_all_coils(tokamak, "floops")
+            greens = self.create_greens_psi_all_coils_floops(tokamak)
 
         psi_from_all_coils = np.sum(
             greens * array_of_coil_currents[:, np.newaxis], axis=0
@@ -448,7 +444,7 @@ class Probes:
         # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
 
-    def create_green_psi_plasma(self, eq, probe="floops"):
+    def create_green_psi_plasma_floops(self, eq):
         """
         Compute the Green's function mapping plasma current density to probe
         measurements of poloidal flux ψ.
@@ -481,9 +477,8 @@ class Probes:
         - Only in-limiter plasma points are included in the computation.
         """
 
-        if probe == "floops":
-            pos_R = self.floop_pos[:, 0]
-            pos_Z = self.floop_pos[:, 1]
+        pos_R = self.floop_pos[:, 0]
+        pos_Z = self.floop_pos[:, 1]
 
         #   only on the limiter domain pts
         greens = Greens(
@@ -495,7 +490,7 @@ class Probes:
 
         return greens
 
-    def psi_from_plasma(self, eq, probe="floops"):
+    def psi_from_plasma_floops(self, eq):
         """
         Compute the contribution of plasma current to poloidal flux measurements
         at diagnostic probes.
@@ -531,17 +526,16 @@ class Probes:
         eq_key = self.create_eq_key(eq)
         plasma_current_distribution = self.get_plasma_current(eq)
 
-        if probe == "floops":
-            try:
-                plasma_greens = self.greens_psi_plasma_floops[eq_key]
-            except:
-                #  add new greens functions to dictionary
-                self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
-                    eq, "floops"
-                )
-                print("new equilibrium grid - computed new greens functions")
-                # use newly created dictionary element.
-                plasma_greens = self.greens_psi_plasma_floops[eq_key]
+        try:
+            plasma_greens = self.greens_psi_plasma_floops[eq_key]
+        except:
+            #  add new greens functions to dictionary
+            self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma_floops(
+                eq
+            )
+            print("new equilibrium grid - computed new greens functions")
+            # use newly created dictionary element.
+            plasma_greens = self.greens_psi_plasma_floops[eq_key]
 
         psi_from_plasma = np.sum(
             plasma_greens * plasma_current_distribution[:, np.newaxis], axis=0
@@ -550,49 +544,21 @@ class Probes:
 
     def calculate_fluxloop_value(self, tokamak, eq=None):
         """
-        <<<<<<< HEAD
-                Compute the total flux loop signals by combining coil and plasma
-                contributions.
+        Total flux for all flux loop probes.
 
-                This method returns the full synthetic flux loop measurement at all
-                diagnostic locations by summing the magnetic response from coil currents
-                and plasma current distribution.
-
-                Parameters
-                ----------
-                eq : Equilibrium
-                    Equilibrium object containing both coil currents and plasma current
-                    density.
-
-                Returns
-                -------
-                np.ndarray
-                    Total poloidal flux ψ at each flux loop location.
-
-                Notes
-                -----
-                - Coil contribution:
-                `psi_floop_all_coils(eq)`
-                - Plasma contribution:
-                `psi_from_plasma(eq)`
-                - Assumes linear superposition of magnetic fields.
-        =======
-                Total flux for all flux loop probes.
-
-                Parameters
-                ----------
-                tokamak : Machine
-                    A tokamak object that provides access to the coils
-                eq : Equilibrium | None
-                    An equilibrium object. If not provided (None), only the coil flux contribution is calculated
-        >>>>>>> 2a40a4e (Add support for fluxloop probe without equilibrium)
+        Parameters
+        ----------
+        tokamak : Machine
+            A tokamak object that provides access to the coils
+        eq : Equilibrium | None
+            An equilibrium object. If not provided (None), only the coil flux contribution is calculated
         """
         if eq is None:
             return self.psi_floop_all_coils(tokamak)
         else:
-            return self.psi_floop_all_coils(tokamak) + self.psi_from_plasma(eq)
+            return self.psi_floop_all_coils(tokamak) + self.psi_from_plasma_floops(eq)
 
-    def create_greens_BrBz_single_coil(self, eq, coil_key, probe="pickups"):
+    def create_greens_BrBz_single_coil_pickups(self, eq, coil_key):
         """
         Compute Green's functions for the magnetic field (Br, Bz) from a single coil,
         evaluated at a set of probe locations.
@@ -621,16 +587,15 @@ class Probes:
         greens_bz_coil : ndarray
             Green's function matrix for Bz at probe locations.
         """
-        if probe == "pickups":
-            pos_R = self.pickup_pos[:, 0]
-            pos_Z = self.pickup_pos[:, 2]
+        pos_R = self.pickup_pos[:, 0]
+        pos_Z = self.pickup_pos[:, 2]
 
         greens_br_coil = eq.tokamak[coil_key].controlBr(pos_R, pos_Z)
         greens_bz_coil = eq.tokamak[coil_key].controlBz(pos_R, pos_Z)
 
         return greens_br_coil, greens_bz_coil
 
-    def greens_BrBz_all_coils(self, eq, probe="pickups"):
+    def greens_BrBz_all_coils_pickups(self, eq):
         """
         Compute Green's function matrices for (Br, Bz) contributions from all coils
         evaluated at a set of probe locations.
@@ -657,18 +622,17 @@ class Probes:
             Global Green's function matrix for vertical field component Bz,
             shape (n_coils, n_probes).
         """
-        if probe == "pickups":
-            array_r = np.array([]).reshape(0, self.number_pickups)
-            array_z = np.array([]).reshape(0, self.number_pickups)
+        array_r = np.array([]).reshape(0, self.number_pickups)
+        array_z = np.array([]).reshape(0, self.number_pickups)
 
         for key in self.coils_dict.keys():
-            vals = self.create_greens_BrBz_single_coil(eq, key, probe)
+            vals = self.create_greens_BrBz_single_coil_pickups(eq, key)
             array_r = np.vstack((array_r, vals[0]))
             array_z = np.vstack((array_z, vals[1]))
 
         return array_r, array_z
 
-    def create_greens_B_oriented_coils(self, eq, probe="pickups"):
+    def create_greens_B_oriented_coils_pickups(self, eq):
         """
         Compute the directional Green's function for coils projected onto probe orientations.
 
@@ -695,16 +659,15 @@ class Probes:
             Oriented Green's function matrix of shape (n_coils, n_probes),
             representing the projection of (Br, Bz) onto probe orientations.
         """
-        if probe == "pickups":
-            or_R = self.pickup_or[:, 0]
-            or_Z = self.pickup_or[:, 2]
+        or_R = self.pickup_or[:, 0]
+        or_Z = self.pickup_or[:, 2]
 
-        vals = self.greens_BrBz_all_coils(eq, probe)
+        vals = self.greens_BrBz_all_coils_pickups(eq)
         prod = vals[0] * or_R + vals[1] * or_Z
 
         return prod
 
-    def BrBz_coils(self, eq, probe="pickups"):
+    def BrBz_coils_pickups(self, eq):
         """
         Compute magnetic field components (Br, Bz) produced by all coils
         at a set of probe locations.
@@ -736,12 +699,11 @@ class Probes:
             Vertical magnetic field at probe locations, shape (n_probes,).
         """
         coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
-        if probe == "pickups":
-            br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
-            bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
+        br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
+        bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
         return br_coil, bz_coil
 
-    def create_greens_BrBz_plasma(self, eq, probe="pickups"):
+    def create_greens_BrBz_plasma_pickups(self, eq):
         """
         Compute Green's functions for magnetic field components (Br, Bz)
         produced by plasma current elements and evaluated at probe locations.
@@ -778,9 +740,8 @@ class Probes:
             Green's function for vertical field component Bz
             mapping plasma grid points to probes.
         """
-        if probe == "pickups":
-            pos_R = self.pickup_pos[:, 0]
-            pos_Z = self.pickup_pos[:, 2]
+        pos_R = self.pickup_pos[:, 0]
+        pos_Z = self.pickup_pos[:, 2]
 
         # rgrid = eq.R
         # zgrid = eq.Z
@@ -801,7 +762,7 @@ class Probes:
 
         return greens_br, greens_bz
 
-    def create_greens_B_oriented_plasma(self, eq, probe="pickups"):
+    def create_greens_B_oriented_plasma_pickups(self, eq):
         """
         Compute the oriented Green's function for plasma current contributions
         projected onto probe directions.
@@ -834,7 +795,7 @@ class Probes:
             Oriented Green's function matrix mapping plasma currents
             to field components aligned with probe orientation.
         """
-        br, bz = self.create_greens_BrBz_plasma(eq)
+        br, bz = self.create_greens_BrBz_plasma_pickups(eq)
 
         or_R = self.pickup_or[:, 0]
         or_Z = self.pickup_or[:, 2]
@@ -842,7 +803,7 @@ class Probes:
 
         return prod
 
-    def BrBz_plasma(self, eq, probe="pickups"):
+    def BrBz_plasma_pickups(self, eq):
         """
         Compute magnetic field components (Br, Bz) generated by plasma currents
         at a set of probe locations.
@@ -889,14 +850,14 @@ class Probes:
             (
                 self.greens_br_plasma_pickup[eq_key],
                 self.greens_bz_plasma_pickup[eq_key],
-            ) = self.create_greens_BrBz_plasma(eq, "pickups")
+            ) = self.create_greens_BrBz_plasma_pickups(eq)
             print("new equilibrium grid - computed new greens functions")
-        if probe == "pickups":
-            br_plasma = np.sum(greens_br * plasma_current, axis=(0, 1))
-            bz_plasma = np.sum(greens_bz * plasma_current, axis=(0, 1))
+
+        br_plasma = np.sum(greens_br * plasma_current, axis=(0, 1))
+        bz_plasma = np.sum(greens_bz * plasma_current, axis=(0, 1))
         return br_plasma, bz_plasma
 
-    def Br(self, eq, probe="pickups"):
+    def Br_pickups(self, eq):
         """
         Compute the total radial magnetic field (Br) from both coils and plasma
         at a set of probe locations.
@@ -933,20 +894,19 @@ class Probes:
         plasma_current = self.get_plasma_current(eq.tokamak)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
-        if probe == "pickups":
-            try:
-                greens_pl = self.greens_br_plasma_pickup[eq_key]
-            except:
-                self.greens_br_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(
-                    eq, "pickups"
-                )[0]
-                greens_pl = self.greens_br_plasma_pickup[eq_key]
-                print("new equilibrium grid - computed new greens functions")
-            br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
-            br_plasma = np.sum(greens_pl * plasma_current, axis=(0))
+        try:
+            greens_pl = self.greens_br_plasma_pickup[eq_key]
+        except:
+            self.greens_br_plasma_pickup[eq_key] = (
+                self.create_greens_BrBz_plasma_pickups(eq)[0]
+            )
+            greens_pl = self.greens_br_plasma_pickup[eq_key]
+            print("new equilibrium grid - computed new greens functions")
+        br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
+        br_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return br_coil + br_plasma
 
-    def Bz(self, eq, probe="pickups"):
+    def Bz_pickups(self, eq):
         """
         Compute the total vertical magnetic field (Bz) from both coils and plasma
         at a set of probe locations.
@@ -983,21 +943,20 @@ class Probes:
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
-        if probe == "pickups":
-            try:
-                greens_pl = self.greens_bz_plasma_pickup[eq_key]
-            except:
-                self.greens_bz_plasma_pickup[eq_key] = self.create_greens_BrBz_plasma(
-                    eq, "pickups"
-                )[1]
-                greens_pl = self.greens_bz_plasma_pickup[eq_key]
-                print("new equilibrium grid - computed new greens functions")
+        try:
+            greens_pl = self.greens_bz_plasma_pickup[eq_key]
+        except:
+            self.greens_bz_plasma_pickup[eq_key] = (
+                self.create_greens_BrBz_plasma_pickups(eq)[1]
+            )
+            greens_pl = self.greens_bz_plasma_pickup[eq_key]
+            print("new equilibrium grid - computed new greens functions")
 
-            bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
-            bz_plasma = np.sum(greens_pl * plasma_current, axis=(0))
+        bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
+        bz_plasma = np.sum(greens_pl * plasma_current, axis=(0))
         return bz_coil + bz_plasma
 
-    def Btor(self, eq, probe="pickups"):
+    def Btor_pickups(self, eq):
         """
         Compute the toroidal magnetic field (Btor) at probe locations.
 
@@ -1026,13 +985,12 @@ class Probes:
         btor : ndarray
             Toroidal magnetic field at probe locations, shape (n_probes,).
         """
-        if probe == "pickups":
-            pos_R = self.pickup_pos[:, 0]
+        pos_R = self.pickup_pos[:, 0]
 
         btor = eq._profiles.fvac() / pos_R
         return btor
 
-    def calculate_pickup_value(self, eq, probe="pickups"):
+    def calculate_pickup_value(self, eq):
         """
         Compute the magnetic field projection (B · n) at pickup probes.
 
@@ -1068,21 +1026,20 @@ class Probes:
         coil_current = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
-        if probe == "pickups":
-            try:
-                greens_pl = self.greens_B_plasma_oriented[eq_key]
-            except:
-                #  add new greens functions to dictionary
-                self.greens_B_plasma_oriented[eq_key] = (
-                    self.create_greens_B_oriented_plasma(eq, "floops")
-                )
-                print("new equilibrium grid - computed new greens functions")
-                # use newly created dictionary element.
-                greens_pl = self.greens_B_plasma_oriented[eq_key]
+        try:
+            greens_pl = self.greens_B_plasma_oriented[eq_key]
+        except:
+            #  add new greens functions to dictionary
+            self.greens_B_plasma_oriented[eq_key] = (
+                self.create_greens_B_oriented_plasma_pickups(eq)
+            )
+            print("new equilibrium grid - computed new greens functions")
+            # use newly created dictionary element.
+            greens_pl = self.greens_B_plasma_oriented[eq_key]
 
-            pickup_tor = self.Btor(eq, probe) * self.pickup_or[:, 1]
-            pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current, axis=0)
-            pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
+        pickup_tor = self.Btor_pickups(eq) * self.pickup_or[:, 1]
+        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current, axis=0)
+        pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 
