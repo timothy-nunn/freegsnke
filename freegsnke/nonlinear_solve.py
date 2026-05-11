@@ -231,9 +231,9 @@ class nl_solver:
 
         # handles the metal circuit eq, mode properties, and performs the vessel mode decomposition
         self.evol_metal_curr = metal_currents(
+            tokamak=eq.tokamak,
             eq=eq,
             flag_vessel_eig=1,
-            flag_plasma=1,
             plasma_pts=self.limiter_handler.plasma_pts,
             max_mode_frequency=self.max_mode_frequency,
             max_internal_timestep=self.max_internal_timestep,

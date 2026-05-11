@@ -1,5 +1,5 @@
 """
-Defines the metal_currents Object, which handles the circuit equations of 
+Defines the metal_currents Object, which handles the circuit equations of
 all metal structures in the tokamak - both active PF coils and passive structures.
 
 Copyright 2025 UKAEA, UKRI-STFC, and The Authors, as per the COPYRIGHT and README files.
@@ -15,9 +15,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>. 
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -28,16 +28,15 @@ from .normal_modes import mode_decomposition
 
 
 class metal_currents:
-
     def __init__(
         self,
-        eq,
+        tokamak,
         flag_vessel_eig,
-        flag_plasma,
         max_mode_frequency,
         max_internal_timestep,
         full_timestep,
         plasma_pts=None,
+        eq=None,
         coil_resist=None,
         coil_self_ind=None,
         verbose=True,
@@ -49,18 +48,18 @@ class metal_currents:
         Parameters
         ----------
 
+        tokamak : Machine
+            A Tokamak object that contains information about the coils and their resistances and inductances.
+        flag_vessel_eig : bool
+            Flag re whether vessel eigenmodes are used or not.
         eq : FreeGSNKE equilibrium Object
+            If an eq is provided, the plasma will be used in the circuit equation.
             Initial equilibrium. This is used to set the domain/grid properties
             as well as the machine properties.
             Furthermore, eq will be used to set up the linearization used by the linear evolutive solver.
             It can be changed later by initializing a new set of initial conditions.
             Note however that, to change either the machine or limiter properties
             it will be necessary to instantiate a new nl_solver object.
-        flag_vessel_eig : bool
-            Flag re whether vessel eigenmodes are used or not.
-        flag_plasma : bool
-            Whether to include plasma in circuit equation. If True, plasma_pts
-            must be provided.
         plasma_pts : freegsnke.limiter_handler.plasma_pts
             Domain points in the domain that are included in the evolutive calculations.
             A typical choice would be all domain points inside the limiter. Defaults to None.
@@ -83,9 +82,11 @@ class metal_currents:
             Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
         """
 
-        self.n_coils = eq.tokamak.n_coils
-        self.n_active_coils = eq.tokamak.n_active_coils
+        self.n_coils = tokamak.n_coils
+        self.n_active_coils = tokamak.n_active_coils
         self.verbose = verbose
+
+        self._eq = eq
 
         # prepare resistance data
         if coil_resist is not None:
@@ -95,7 +96,7 @@ class metal_currents:
                 )
             self.coil_resist = coil_resist
         else:
-            self.coil_resist = eq.tokamak.coil_resist
+            self.coil_resist = tokamak.coil_resist
 
         self.Rm1 = 1.0 / self.coil_resist
         # self.R = np.copy(self.coil_resist)
@@ -109,12 +110,11 @@ class metal_currents:
                 )
             self.coil_self_ind = coil_self_ind
         else:
-            self.coil_self_ind = eq.tokamak.coil_self_ind
+            self.coil_self_ind = tokamak.coil_self_ind
 
         self.build_rm1l()
 
         self.flag_vessel_eig = flag_vessel_eig
-        self.flag_plasma = flag_plasma
 
         self.max_internal_timestep = max_internal_timestep
         self.full_timestep = full_timestep
@@ -134,9 +134,17 @@ class metal_currents:
             self.max_mode_frequency = 0
             self.initialize_for_no_eig()
 
-        if flag_plasma:
+        if self._eq is not None:
+            if plasma_pts is None:
+                raise RuntimeError(
+                    "eq provided to metal_currents but plasma_pts was not (and is required)"
+                )
             self.plasma_pts = plasma_pts
-            self.Mey_matrix = self.Mey(eq)
+            self.Mey_matrix = self.Mey(self._eq)
+        elif plasma_pts is not None:
+            raise RuntimeError(
+                "plasma_pts provided to metal_currents but eq was not (and is required)"
+            )
 
         # Dummy voltage vector
         self.empty_U = np.zeros(self.n_coils)
@@ -264,7 +272,7 @@ class metal_currents:
             full_timestep=self.full_timestep,
         )
 
-        if self.flag_plasma:
+        if self._eq is not None:
             self.forcing_term = self.forcing_term_eig_plasma
         else:
             self.forcing_term = self.forcing_term_eig_no_plasma
@@ -290,7 +298,7 @@ class metal_currents:
             full_timestep=self.full_timestep,
         )
 
-        if self.flag_plasma:
+        if self._eq is not None:
             self.forcing_term = self.forcing_term_no_eig_plasma
         else:
             self.forcing_term = self.forcing_term_no_eig_no_plasma
@@ -310,7 +318,6 @@ class metal_currents:
         self.solver.set_timesteps(
             full_timestep=full_timestep, max_internal_timestep=max_internal_timestep
         )
-
 
     def forcing_term_eig_plasma(self, active_voltage_vec, Iydot):
         """Right-hand-side of circuit equation in eigenmode basis with plasma.
