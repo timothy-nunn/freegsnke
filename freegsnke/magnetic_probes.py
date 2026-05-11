@@ -58,7 +58,7 @@ class Probes:
     - psi_all_coils(eq): returns list of psi values at each flux loop position, summed over all coils.
     - psi_from_plasma(eq): returns list of psi values at each flux loop position from plasma itself.
     - create_greens_B_oriented_plasma(eq) : creates oriented greens functions for pickup coils.
-    - calculate_fluxloop_value(eq): returns total flux at each probe position (sum of previous two outputs).
+    - calculate_fluxloop_value(tokamak, eq): returns total flux at each probe position (sum of previous two outputs).
     - calculate_pickup_value(eq): returns pickup values at each probe position.
 
 
@@ -105,6 +105,10 @@ class Probes:
                 print("Magnetic probes --> built from user-provided data.")
 
             self.floops = magnetic_probe_data["flux_loops"]
+            self.floop_pos = np.array([probe["position"] for probe in self.floops])
+            self.number_floops = np.shape(self.floop_pos)[0]  # number of probes
+            self.floop_order = [probe["name"] for probe in self.floops]
+
             self.pickups = magnetic_probe_data["pickups"]
             self.coil_names = list(coils_dict.keys())
             self.coils_dict = coils_dict
@@ -135,7 +139,9 @@ class Probes:
         self.floop_order = [probe["name"] for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
-        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(eq, "floops")
+        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(
+            eq.tokamak, "floops"
+        )
         self.greens_psi_plasma_floops = {}
         self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
             eq, "floops"
@@ -205,7 +211,7 @@ class Probes:
     Things for flux loops
     """
 
-    def create_greens_psi_single_coil(self, eq, coil_key, probe="floops"):
+    def create_greens_psi_single_coil(self, tokamak, coil_key, probe="floops"):
         """
         Create array of greens functions for given coil evaluate at all probe positions
         - pos_R and pos_Z are arrays of R,Z coordinates of the probes
@@ -230,11 +236,11 @@ class Probes:
         # greens_filaments *= pol
         # greens_filaments *= mul
         # greens_psi_coil = np.sum(greens_filaments, axis=1)
-        greens_psi_coil = eq.tokamak[coil_key].controlPsi(pos_R, pos_Z)
+        greens_psi_coil = tokamak[coil_key].controlPsi(pos_R, pos_Z)
 
         return greens_psi_coil
 
-    def create_greens_psi_all_coils(self, eq, probe="floops"):
+    def create_greens_psi_all_coils(self, tokamak, probe="floops"):
         """
         Create 2d array of greens functions for all coils and at all probe positions
         - array[i][j] is greens function for coil i evaluated at probe position j
@@ -243,7 +249,7 @@ class Probes:
         array = np.array([]).reshape(0, self.number_floops)
         for key in self.coils_dict.keys():
             array = np.vstack(
-                (array, self.create_greens_psi_single_coil(eq, key, probe))
+                (array, self.create_greens_psi_single_coil(tokamak, key, probe))
             )
         return array
 
@@ -256,6 +262,8 @@ class Probes:
         array_of_coil_currents = self.get_coil_currents(tokamak)
         if probe == "floops" and hasattr(self, "greens_psi_coils_floops"):
             greens = self.greens_psi_coils_floops
+        else:
+            greens = self.create_greens_psi_all_coils(tokamak, "floops")
 
         psi_from_all_coils = np.sum(
             greens * array_of_coil_currents[:, np.newaxis], axis=0
@@ -310,11 +318,21 @@ class Probes:
         )
         return psi_from_plasma
 
-    def calculate_fluxloop_value(self, eq):
+    def calculate_fluxloop_value(self, tokamak, eq=None):
         """
-        total flux for all floop probes
+        Total flux for all flux loop probes.
+
+        Parameters
+        ----------
+        tokamak : Machine
+            A tokamak object that provides access to the coils
+        eq : Equilibrium | None
+            An equilibrium object. If not provided (None), only the coil flux contribution is calculated
         """
-        return self.psi_floop_all_coils(eq.tokamak) + self.psi_from_plasma(eq)
+        if eq is None:
+            return self.psi_floop_all_coils(tokamak)
+        else:
+            return self.psi_floop_all_coils(tokamak) + self.psi_from_plasma(eq)
 
     """
     Things for pickup coils
