@@ -16,9 +16,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
@@ -176,13 +176,13 @@ class Probes:
     - eq grid key 
     """
 
-    def get_coil_currents(self, eq):
+    def get_coil_currents(self, tokamak):
         """
         create list of coil currents from the equilibrium
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
         for i, label in enumerate(self.coil_names):
-            array_of_coil_currents[i] = eq.tokamak[label].current
+            array_of_coil_currents[i] = tokamak[label].current
 
         # could use eq.tokamak.getcurrents() instead
         return array_of_coil_currents
@@ -253,7 +253,7 @@ class Probes:
         returns array of flux values at the positions of the floop probes by default.
         new probes can be used instead (just change which greens function is used)
         """
-        array_of_coil_currents = self.get_coil_currents(eq)
+        array_of_coil_currents = self.get_coil_currents(eq.tokamak)
         if probe == "floops":
             greens = self.greens_psi_coils_floops
 
@@ -395,7 +395,7 @@ class Probes:
         Magnetic fields from coils, radial and z components only.
         evaluated on pickup positions by default.
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         if probe == "pickups":
             br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
@@ -469,8 +469,8 @@ class Probes:
         returns array with Br at each pickup coil probe
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
-        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
+        plasma_current = self.get_plasma_current(eq.tokamak)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
         if probe == "pickups":
@@ -492,7 +492,7 @@ class Probes:
         returns array with Bz at each pickup coil probe
         - evaluated on pickups by default, can apply to other probes too with minor modification
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
@@ -538,7 +538,7 @@ class Probes:
         """
         Compute B.n at pickup probes, using oriented greens functions.
         """
-        coil_current = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_current = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
         if probe == "pickups":
