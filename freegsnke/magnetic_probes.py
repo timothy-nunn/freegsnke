@@ -122,6 +122,10 @@ class Probes:
                 print("Magnetic probes --> built from user-provided data.")
 
             self.floops = magnetic_probe_data["flux_loops"]
+            self.floop_pos = np.array([probe["position"] for probe in self.floops])
+            self.number_floops = np.shape(self.floop_pos)[0]  # number of probes
+            self.floop_order = [probe["name"] for probe in self.floops]
+
             self.pickups = magnetic_probe_data["pickups"]
             self.coil_names = list(coils_dict.keys())
             self.coils_dict = coils_dict
@@ -195,7 +199,9 @@ class Probes:
         self.floop_order = [probe["name"] for probe in self.floops]
 
         # # Initilaise Greens functions Gpsi
-        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(eq, "floops")
+        self.greens_psi_coils_floops = self.create_greens_psi_all_coils(
+            eq.tokamak, "floops"
+        )
         self.greens_psi_plasma_floops = {}
         self.greens_psi_plasma_floops[eq_key] = self.create_green_psi_plasma(
             eq, "floops"
@@ -321,7 +327,7 @@ class Probes:
         eq_key = (eq.Rmin, eq.Rmax, eq.Zmin, eq.Zmax, nx, ny)
         return eq_key
 
-    def create_greens_psi_single_coil(self, eq, coil_key, probe="floops"):
+    def create_greens_psi_single_coil(self, tokamak, coil_key, probe="floops"):
         """
         Compute the Green's function contribution of a single coil to probe signals.
 
@@ -357,11 +363,11 @@ class Probes:
             pos_R = self.floop_pos[:, 0]
             pos_Z = self.floop_pos[:, 1]
 
-        greens_psi_coil = eq.tokamak[coil_key].controlPsi(pos_R, pos_Z)
+        greens_psi_coil = tokamak[coil_key].controlPsi(pos_R, pos_Z)
 
         return greens_psi_coil
 
-    def create_greens_psi_all_coils(self, eq, probe="floops"):
+    def create_greens_psi_all_coils(self, tokamak, probe="floops"):
         """
         Compute the Green's function matrix relating all coils to all probe
         locations for poloidal flux measurements.
@@ -395,10 +401,10 @@ class Probes:
         """
 
         array = np.array([]).reshape(0, self.number_floops)
-        for key in self.coils_dict.keys():
+        for key in self.coils_dict:
             array = np.vstack((
                 array,
-                self.create_greens_psi_single_coil(eq, key, probe),
+                self.create_greens_psi_single_coil(tokamak, key, probe),
             ))
         return array
 
@@ -433,6 +439,8 @@ class Probes:
         array_of_coil_currents = self.get_coil_currents(tokamak)
         if probe == "floops" and hasattr(self, "greens_psi_coils_floops"):
             greens = self.greens_psi_coils_floops
+        else:
+            greens = self.create_greens_psi_all_coils(tokamak, "floops")
 
         psi_from_all_coils = np.sum(
             greens * array_of_coil_currents[:, np.newaxis], axis=0
@@ -540,35 +548,49 @@ class Probes:
         )
         return psi_from_plasma
 
-    def calculate_fluxloop_value(self, eq):
+    def calculate_fluxloop_value(self, tokamak, eq=None):
         """
-        Compute the total flux loop signals by combining coil and plasma
-        contributions.
+        <<<<<<< HEAD
+                Compute the total flux loop signals by combining coil and plasma
+                contributions.
 
-        This method returns the full synthetic flux loop measurement at all
-        diagnostic locations by summing the magnetic response from coil currents
-        and plasma current distribution.
+                This method returns the full synthetic flux loop measurement at all
+                diagnostic locations by summing the magnetic response from coil currents
+                and plasma current distribution.
 
-        Parameters
-        ----------
-        eq : Equilibrium
-            Equilibrium object containing both coil currents and plasma current
-            density.
+                Parameters
+                ----------
+                eq : Equilibrium
+                    Equilibrium object containing both coil currents and plasma current
+                    density.
 
-        Returns
-        -------
-        np.ndarray
-            Total poloidal flux ψ at each flux loop location.
+                Returns
+                -------
+                np.ndarray
+                    Total poloidal flux ψ at each flux loop location.
 
-        Notes
-        -----
-        - Coil contribution:
-        `psi_floop_all_coils(eq)`
-        - Plasma contribution:
-        `psi_from_plasma(eq)`
-        - Assumes linear superposition of magnetic fields.
+                Notes
+                -----
+                - Coil contribution:
+                `psi_floop_all_coils(eq)`
+                - Plasma contribution:
+                `psi_from_plasma(eq)`
+                - Assumes linear superposition of magnetic fields.
+        =======
+                Total flux for all flux loop probes.
+
+                Parameters
+                ----------
+                tokamak : Machine
+                    A tokamak object that provides access to the coils
+                eq : Equilibrium | None
+                    An equilibrium object. If not provided (None), only the coil flux contribution is calculated
+        >>>>>>> 2a40a4e (Add support for fluxloop probe without equilibrium)
         """
-        return self.psi_floop_all_coils(eq.tokamak) + self.psi_from_plasma(eq)
+        if eq is None:
+            return self.psi_floop_all_coils(tokamak)
+        else:
+            return self.psi_floop_all_coils(tokamak) + self.psi_from_plasma(eq)
 
     def create_greens_BrBz_single_coil(self, eq, coil_key, probe="pickups"):
         """
