@@ -16,9 +16,9 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.   
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
@@ -218,11 +218,18 @@ class Probes:
         self.greens_B_plasma_oriented[eq_key] = self.create_greens_B_oriented_plasma(
             eq, "pickups"
         )
-        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(
-            eq, "pickups"
-        )
+        self.greens_B_coils_oriented = self.create_greens_B_oriented_coils(eq, "pickups")
 
-    def get_coil_currents(self, eq):
+        # Other probes - to add in future...
+
+    """
+    Things for all probes
+    - coil current array
+    - plasma current array
+    - eq grid key 
+    """
+
+    def get_coil_currents(self, tokamak):
         """
         Extract coil current values from an equilibrium object in a fixed ordering.
 
@@ -251,7 +258,7 @@ class Probes:
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
         for i, label in enumerate(self.coil_names):
-            array_of_coil_currents[i] = eq.tokamak[label].current
+            array_of_coil_currents[i] = tokamak[label].current
 
         # could use eq.tokamak.getcurrents() instead
         return array_of_coil_currents
@@ -389,9 +396,10 @@ class Probes:
 
         array = np.array([]).reshape(0, self.number_floops)
         for key in self.coils_dict.keys():
-            array = np.vstack(
-                (array, self.create_greens_psi_single_coil(eq, key, probe))
-            )
+            array = np.vstack((
+                array,
+                self.create_greens_psi_single_coil(eq, key, probe),
+            ))
         return array
 
     def psi_floop_all_coils(self, eq, probe="floops"):
@@ -422,7 +430,7 @@ class Probes:
         ψ_total = Σ_i I_i G_i
         - The ordering of coils is defined by `self.coil_names`.
         """
-        array_of_coil_currents = self.get_coil_currents(eq)
+        array_of_coil_currents = self.get_coil_currents(eq.tokamak)
         if probe == "floops":
             greens = self.greens_psi_coils_floops
 
@@ -705,7 +713,7 @@ class Probes:
         bz_coil : ndarray
             Vertical magnetic field at probe locations, shape (n_probes,).
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         if probe == "pickups":
             br_coil = np.sum(self.greens_br_coils_pickup * coil_currents, axis=0)
             bz_coil = np.sum(self.greens_bz_coils_pickup * coil_currents, axis=0)
@@ -899,8 +907,8 @@ class Probes:
         br_total : ndarray
             Total radial magnetic field at probe locations, shape (n_probes,).
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
-        plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
+        plasma_current = self.get_plasma_current(eq.tokamak)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
         if probe == "pickups":
@@ -949,7 +957,7 @@ class Probes:
         bz_total : ndarray
             Total vertical magnetic field at probe locations, shape (n_probes,).
         """
-        coil_currents = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_currents = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
 
@@ -1035,7 +1043,7 @@ class Probes:
             Scalar pickup signal (B · n) at each probe location,
             shape (n_probes,).
         """
-        coil_current = self.get_coil_currents(eq)[:, np.newaxis]
+        coil_current = self.get_coil_currents(eq.tokamak)[:, np.newaxis]
         plasma_current = self.get_plasma_current(eq)[:, np.newaxis]
         eq_key = self.create_eq_key(eq)
         if probe == "pickups":
@@ -1051,9 +1059,7 @@ class Probes:
                 greens_pl = self.greens_B_plasma_oriented[eq_key]
 
             pickup_tor = self.Btor(eq, probe) * self.pickup_or[:, 1]
-            pickup_pol_coil = np.sum(
-                self.greens_B_coils_oriented * coil_current, axis=0
-            )
+            pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current, axis=0)
             pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
