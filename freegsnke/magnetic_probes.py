@@ -245,13 +245,13 @@ class Probes:
         new probes can be used instead (just change which greens function is used)
         """
         array_of_coil_currents = self.get_coil_currents(tokamak)
-        if hasattr(self, "greens_psi_coils_floops"):
-            greens = self.greens_psi_coils_floops
-        else:
-            greens = self.create_greens_psi_all_coils_floops(tokamak)
+        if not hasattr(self, "greens_psi_coils_floops"):
+            self.greens_psi_coils_floops = self.create_greens_psi_all_coils_floops(
+                tokamak
+            )
 
         psi_from_all_coils = np.sum(
-            greens * array_of_coil_currents[:, np.newaxis], axis=0
+            self.greens_psi_coils_floops * array_of_coil_currents[:, np.newaxis], axis=0
         )
         # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
@@ -517,14 +517,12 @@ class Probes:
             pickup_tor = self.Btor_pickups(eq) * self.pickup_or[:, 1]
 
         coil_current = self.get_coil_currents(tokamak)[:, np.newaxis]
-        if hasattr(self, "greens_B_coils_oriented"):
-            greens_B_coils_oriented = self.greens_B_coils_oriented
-        else:
-            greens_B_coils_oriented = self.create_greens_B_oriented_coils_pickups(
+        if not hasattr(self, "greens_B_coils_oriented"):
+            self.greens_B_coils_oriented = self.create_greens_B_oriented_coils_pickups(
                 tokamak
             )
 
-        pickup_pol_coil = np.sum(greens_B_coils_oriented * coil_current, axis=0)
+        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current, axis=0)
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 
