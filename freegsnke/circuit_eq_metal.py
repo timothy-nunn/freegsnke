@@ -40,6 +40,7 @@ class metal_currents:
         coil_resist=None,
         coil_self_ind=None,
         verbose=True,
+        selected_modes_mask=False,
     ):
         """Sets up framework to solve the dynamical evolution of all metal currents.
         Can be used by itself to solve metal circuit equations for vacuum shots,
@@ -80,6 +81,8 @@ class metal_currents:
             2d matrix of mutual inductances between all pairs of machine conducting elements,
             including both active coils and passive structures
             Defaults to None, meaning the values calculated by default in tokamak will be sourced and used.
+        selected_modes_mask : bool | None
+            Passed onto `initialize_for_eig` if `flag_vessel_eig` is true.
         """
 
         self.n_coils = tokamak.n_coils
@@ -128,7 +131,7 @@ class metal_currents:
                 n_active_coils=self.n_active_coils,
             )
             self.max_mode_frequency = max_mode_frequency
-            self.initialize_for_eig(selected_modes_mask=False)
+            self.initialize_for_eig(selected_modes_mask=selected_modes_mask)
 
         else:
             self.max_mode_frequency = 0
