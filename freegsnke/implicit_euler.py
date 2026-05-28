@@ -14,14 +14,15 @@ FreeGSNKE is free software: you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
-  
+
 You should have received a copy of the GNU Lesser General Public License
-along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.  
+along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import math
 
 import numpy as np
+from numba import njit
 
 
 class implicit_euler_solver:
@@ -128,8 +129,14 @@ class implicit_euler_solver:
             Lenght N vector of the forcing F dt,  at time t
             multiplied by self.internal_timestep
         """
-        Itpdt = np.dot(self.inverse_operator, dtforcing + np.dot(self.Lmatrix, It))
-        return Itpdt
+        return self._internal_stepper(
+            self.inverse_operator, dtforcing, self.Lmatrix, It
+        )
+
+    @staticmethod
+    @njit(cache=True)
+    def _internal_stepper(inverse_operator, dtforcing, Lmatrix, It):
+        return np.dot(inverse_operator, dtforcing + np.dot(Lmatrix, It))
 
     def full_stepper(self, It, forcing):
         """Calculates the next full timestep I(t + `self.full_timestep`) by repeatedly
