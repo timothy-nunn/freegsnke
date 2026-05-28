@@ -131,7 +131,9 @@ class metal_currents:
                 n_active_coils=self.n_active_coils,
             )
             self.max_mode_frequency = max_mode_frequency
-            self.initialize_for_eig(selected_modes_mask=selected_modes_mask)
+            self.initialize_for_eig(
+                selected_modes_mask=selected_modes_mask, verbose=self.verbose
+            )
 
         else:
             self.max_mode_frequency = 0
