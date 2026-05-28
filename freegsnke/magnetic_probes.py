@@ -184,8 +184,9 @@ class Probes:
         create list of coil currents from the equilibrium
         """
         array_of_coil_currents = np.zeros(len(self.coil_names))
+
         for i, label in enumerate(self.coil_names):
-            array_of_coil_currents[i] = tokamak[label].current
+            array_of_coil_currents[i] = self.coils_dict[label].current
 
         # could use eq.tokamak.getcurrents() instead
         return array_of_coil_currents
