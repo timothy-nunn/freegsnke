@@ -21,7 +21,8 @@ along with FreeGSNKE.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from freegs4e.gradshafranov import Greens, GreensBr, GreensBz
+from freegs4e.gradshafranov import Greens
+from numba import njit
 
 from .implicit_euler import implicit_euler_solver
 from .normal_modes import mode_decomposition
@@ -361,10 +362,18 @@ class metal_currents:
         all_Us : np.ndarray
             Effective voltages in eigenmode basis.
         """
-        all_Us = self.empty_U.copy()
-        all_Us[: self.n_active_coils] = active_voltage_vec
-        all_Us = np.dot(self.Pm1, self.Rm1 * all_Us)
-        return all_Us
+        return self._forcing_term_eig_no_plasma(
+            active_voltage_vec, self.n_active_coils, self.empty_U, self.Pm1, self.Rm1
+        )
+
+    @staticmethod
+    @njit(cache=True)
+    def _forcing_term_eig_no_plasma(
+        active_voltage_vec, n_active_coils, empty_U, Pm1, Rm1
+    ):
+        all_Us = empty_U.copy()
+        all_Us[:n_active_coils] = active_voltage_vec
+        return np.dot(Pm1, Rm1 * all_Us)
 
     def forcing_term_no_eig_plasma(self, active_voltage_vec, Iydot):
         """Right-hand-side of circuit equation in normal mode basis with plasma.
