@@ -239,20 +239,21 @@ class Probes:
             )
         return array
 
-    def psi_floop_all_coils(self, tokamak):
+    def psi_floop_all_coils(self, tokamak, coil_currents=None):
         """
         compute flux function summed over all coils.
         returns array of flux values at the positions of the floop probes by default.
         new probes can be used instead (just change which greens function is used)
         """
-        array_of_coil_currents = self.get_coil_currents(tokamak)
+        if coil_currents is None:
+            coil_currents = self.get_coil_currents(tokamak)[:, np.newaxis]
         if not hasattr(self, "greens_psi_coils_floops"):
             self.greens_psi_coils_floops = self.create_greens_psi_all_coils_floops(
                 tokamak
             )
 
         psi_from_all_coils = np.sum(
-            self.greens_psi_coils_floops * array_of_coil_currents[:, np.newaxis], axis=0
+            self.greens_psi_coils_floops * coil_currents, axis=0
         )
         # self.floop_psi = psi_from_all_coils
         return psi_from_all_coils
@@ -302,7 +303,7 @@ class Probes:
         )
         return psi_from_plasma
 
-    def calculate_fluxloop_value(self, tokamak, eq=None):
+    def calculate_fluxloop_value(self, tokamak, eq=None, coil_currents=None):
         """
         Total flux for all flux loop probes.
 
@@ -314,9 +315,11 @@ class Probes:
             An equilibrium object. If not provided (None), only the coil flux contribution is calculated
         """
         if eq is None:
-            return self.psi_floop_all_coils(tokamak)
+            return self.psi_floop_all_coils(tokamak, coil_currents=coil_currents)
         else:
-            return self.psi_floop_all_coils(tokamak) + self.psi_from_plasma_floops(eq)
+            return self.psi_floop_all_coils(
+                tokamak, coil_currents=coil_currents
+            ) + self.psi_from_plasma_floops(eq)
 
     """
     Things for pickup coils
@@ -493,7 +496,7 @@ class Probes:
         btor = eq._profiles.fvac() / pos_R
         return btor
 
-    def calculate_pickup_value(self, tokamak, eq=None):
+    def calculate_pickup_value(self, tokamak, eq=None, coil_currents=None):
         """
         Compute B.n at pickup probes, using oriented greens functions.
         """
@@ -517,13 +520,14 @@ class Probes:
             pickup_pol_pl = np.sum(greens_pl * plasma_current, axis=(0))
             pickup_tor = self.Btor_pickups(eq) * self.pickup_or[:, 1]
 
-        coil_current = self.get_coil_currents(tokamak)[:, np.newaxis]
+        if coil_currents is None:
+            coil_currents = self.get_coil_currents(tokamak)[:, np.newaxis]
         if not hasattr(self, "greens_B_coils_oriented"):
             self.greens_B_coils_oriented = self.create_greens_B_oriented_coils_pickups(
                 tokamak
             )
 
-        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_current, axis=0)
+        pickup_pol_coil = np.sum(self.greens_B_coils_oriented * coil_currents, axis=0)
 
         return pickup_pol_coil + pickup_pol_pl + pickup_tor
 
